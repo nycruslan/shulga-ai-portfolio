@@ -1,0 +1,35 @@
+---
+const links = [
+  { href: '#work', label: 'Work' },
+  { href: '#about', label: 'About' },
+  { href: '#contact', label: 'Contact' },
+];
+---
+
+<nav
+  class="sticky top-0 z-50 backdrop-blur-md"
+  style="background: color-mix(in srgb, var(--color-bg) 80%, transparent);"
+>
+  <div
+    class="mx-auto flex max-w-5xl items-center justify-between px-6 py-4"
+    style="border-bottom: 1px solid var(--color-border);"
+  >
+    <a href="#top" class="font-mono text-sm tracking-tight" style="color: var(--color-text);">
+      shulga.ai
+    </a>
+    <ul class="flex gap-7 text-sm" style="color: var(--color-text-muted);">
+      {
+        links.map((link) => (
+          <li>
+            <a
+              href={link.href}
+              class="transition-colors hover:[color:var(--color-text)]"
+            >
+              {link.label}
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</nav>

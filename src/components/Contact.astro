@@ -1,0 +1,67 @@
+---
+const links = [
+  { label: 'Email', href: 'mailto:nycruslan@gmail.com', value: 'nycruslan@gmail.com' },
+  { label: 'LinkedIn', href: 'https://www.linkedin.com/in/nycruslan/', value: 'linkedin.com/in/nycruslan' },
+  { label: 'GitHub', href: 'https://github.com/nycruslan', value: 'github.com/nycruslan' },
+  { label: 'Location', href: null, value: 'New York, NY' },
+];
+---
+
+<section
+  id="contact"
+  class="mx-auto max-w-5xl px-6 py-24 pb-40"
+  style="border-top: 1px solid var(--color-border);"
+>
+  <p
+    class="mb-12 font-mono text-xs tracking-widest uppercase"
+    style="color: var(--color-text-subtle);"
+  >
+    Contact
+  </p>
+
+  <div class="grid gap-12 md:grid-cols-[1fr_2fr]">
+    <h2
+      class="text-2xl font-medium md:text-3xl"
+      style="color: var(--color-text); letter-spacing: -0.01em;"
+    >
+      Working on something interesting? Let's talk.
+    </h2>
+
+    <dl class="space-y-5">
+      {
+        links.map((link) => (
+          <div class="flex items-baseline gap-6">
+            <dt
+              class="w-20 font-mono text-xs uppercase tracking-wider"
+              style="color: var(--color-text-subtle);"
+            >
+              {link.label}
+            </dt>
+            <dd class="font-mono text-sm" style="color: var(--color-text);">
+              {link.href ? (
+                <a
+                  href={link.href}
+                  class="transition-colors hover:[color:var(--color-text-muted)]"
+                >
+                  {link.value} ↗
+                </a>
+              ) : (
+                link.value
+              )}
+            </dd>
+          </div>
+        ))
+      }
+    </dl>
+  </div>
+</section>
+
+<footer
+  class="mx-auto max-w-5xl px-6 py-8 font-mono text-xs"
+  style="border-top: 1px solid var(--color-border); color: var(--color-text-subtle);"
+>
+  <div class="flex justify-between">
+    <span>© {new Date().getFullYear()} Ruslan Shulga</span>
+    <span>Built with Astro</span>
+  </div>
+</footer>
