@@ -65,31 +65,31 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://shulga.ai')
         const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         if (reduced) { el.remove(); return; }
 
+        // Safety fallback — remove preloader no matter what after 3.5s
+        const safety = setTimeout(() => { if (el.parentNode) el.remove(); }, 3500);
+
         const chars = el.querySelectorAll<HTMLElement>('.preloader-char');
-        gsap.to(chars, {
-          yPercent: -110,
-          duration: 0.5,
-          stagger: 0.03,
-          ease: 'power2.in',
-          delay: 0,
+        const tl = gsap.timeline({
+          onComplete: () => {
+            clearTimeout(safety);
+            el.remove();
+          },
         });
 
-        gsap.set(chars, { yPercent: 110 });
-        gsap.to(chars, {
+        // Chars slide up from below into view
+        tl.to(chars, {
           yPercent: 0,
           duration: 0.6,
           stagger: 0.03,
           ease: 'power3.out',
-          delay: 0.1,
-        });
+        }, 0.1);
 
-        gsap.to(el, {
+        // Hold for a moment, then slide the whole overlay up
+        tl.to(el, {
           yPercent: -100,
           duration: 0.7,
           ease: 'power3.inOut',
-          delay: 1.5,
-          onComplete: () => el.remove(),
-        });
+        }, 1.4);
       }
 
       runPreloader();
