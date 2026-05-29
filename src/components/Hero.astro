@@ -1,10 +1,16 @@
 ---
+import HeroShader from './islands/HeroShader';
 ---
 
-<section id="top" class="mx-auto max-w-5xl px-6 pt-32 pb-24 md:pt-48 md:pb-32">
+<section id="top" class="relative mx-auto max-w-5xl px-6 pt-32 pb-24 md:pt-48 md:pb-32 overflow-visible">
+  <div class="absolute inset-x-0 -top-20 -bottom-20 -z-10 pointer-events-none">
+    <HeroShader client:only="react" />
+  </div>
+
   <p
     class="mb-6 font-mono text-xs tracking-widest uppercase"
     style="color: var(--color-text-subtle);"
+    data-hero-reveal="0"
   >
     Ruslan Shulga
   </p>
@@ -12,6 +18,8 @@
   <h1
     class="text-4xl font-medium tracking-tight md:text-6xl md:leading-[1.05]"
     style="color: var(--color-text); letter-spacing: -0.02em;"
+    transition:name="hero-title"
+    data-hero-reveal="1"
   >
     I build production AI<br />
     platforms for the enterprise.
@@ -20,30 +28,87 @@
   <p
     class="mt-8 max-w-2xl text-lg leading-relaxed md:text-xl"
     style="color: var(--color-text-muted);"
+    data-hero-reveal="2"
   >
     VP Engineering at JPMorgan Chase. The systems I lead serve several thousand
     employees every day. Multi-agent orchestration, hybrid retrieval, custom
     MCP servers.
   </p>
 
-  <div class="mt-12 flex flex-wrap gap-3 text-sm font-mono">
+  <div class="mt-12 flex flex-wrap gap-3 text-sm font-mono" data-hero-reveal="3">
     <a
       href="#work"
-      class="px-4 py-2 transition-colors"
+      class="magnetic px-4 py-2 transition-colors"
+      data-magnetic
       style="border: 1px solid var(--color-border-strong); color: var(--color-text);"
-      onmouseover="this.style.background='var(--color-bg-elevated)'"
-      onmouseout="this.style.background='transparent'"
     >
       View work →
     </a>
     <a
       href="#contact"
-      class="px-4 py-2 transition-colors"
+      class="magnetic px-4 py-2 transition-colors"
+      data-magnetic
       style="color: var(--color-text-muted);"
-      onmouseover="this.style.color='var(--color-text)'"
-      onmouseout="this.style.color='var(--color-text-muted)'"
     >
       Get in touch
     </a>
+    <button
+      type="button"
+      class="magnetic px-4 py-2 transition-colors"
+      data-magnetic
+      data-open-chat
+      style="border: 1px solid var(--color-border); color: var(--color-text-muted);"
+    >
+      <span class="inline-block size-1.5 rounded-full mr-2 align-middle" style="background: var(--color-text);"></span>
+      Ask my portfolio
+    </button>
   </div>
+
+  <p class="mt-10 font-mono text-xs" style="color: var(--color-text-subtle);">
+    Press <kbd class="px-1.5 py-0.5 rounded border" style="border-color: var(--color-border); color: var(--color-text-muted);">⌘ K</kbd> for commands
+  </p>
 </section>
+
+<script>
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!reduced) {
+    const els = document.querySelectorAll<HTMLElement>('[data-hero-reveal]');
+    els.forEach((el, i) => {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(12px)';
+      el.style.transition = 'opacity 700ms ease-out, transform 700ms ease-out';
+      el.style.transitionDelay = `${120 + i * 90}ms`;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          el.style.opacity = '1';
+          el.style.transform = 'translateY(0)';
+        });
+      });
+    });
+  }
+
+  // Open chat handler
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('[data-open-chat]')) {
+      window.dispatchEvent(new CustomEvent('open-ask-me'));
+    }
+  });
+
+  // Magnetic CTAs
+  if (!reduced && window.matchMedia('(pointer: fine)').matches) {
+    const magnets = document.querySelectorAll<HTMLElement>('[data-magnetic]');
+    magnets.forEach((el) => {
+      el.addEventListener('mousemove', (e) => {
+        const rect = el.getBoundingClientRect();
+        const mx = e.clientX - (rect.left + rect.width / 2);
+        const my = e.clientY - (rect.top + rect.height / 2);
+        const strength = 0.25;
+        el.style.transform = `translate(${mx * strength}px, ${my * strength}px)`;
+      });
+      el.addEventListener('mouseleave', () => {
+        el.style.transform = '';
+      });
+    });
+  }
+</script>

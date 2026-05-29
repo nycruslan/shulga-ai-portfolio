@@ -1,0 +1,98 @@
+---
+import { getCollection, render, type CollectionEntry } from 'astro:content';
+import Layout from '../../layouts/Layout.astro';
+import Nav from '../../components/Nav.astro';
+
+export async function getStaticPaths() {
+  const work = await getCollection('work');
+  return work.map((entry) => ({
+    params: { slug: entry.id },
+    props: { entry },
+  }));
+}
+
+interface Props {
+  entry: CollectionEntry<'work'>;
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+const order = entry.data.order;
+---
+
+<Layout title={`${entry.data.title} — Ruslan Shulga`} description={entry.data.blurb}>
+  <Nav />
+  <main class="mx-auto max-w-3xl px-6 pt-20 pb-32 md:pt-32">
+    <a
+      href="/#work"
+      class="font-mono text-xs uppercase tracking-widest"
+      style="color: var(--color-text-subtle);"
+    >
+      ← Selected work
+    </a>
+
+    <div class="mt-12 grid gap-6 md:grid-cols-[80px_1fr]">
+      <span
+        class="font-mono text-sm pt-2"
+        style="color: var(--color-text-subtle);"
+        transition:name={`work-num-${entry.id}`}
+      >
+        {String(order).padStart(2, '0')}
+      </span>
+      <div>
+        <h1
+          class="text-3xl font-medium md:text-5xl"
+          style="color: var(--color-text); letter-spacing: -0.02em;"
+          transition:name={`work-title-${entry.id}`}
+        >
+          {entry.data.title}
+        </h1>
+
+        <p class="mt-5 max-w-2xl text-lg leading-relaxed" style="color: var(--color-text-muted);">
+          {entry.data.blurb}
+        </p>
+
+        <div class="mt-8 flex flex-wrap gap-x-5 gap-y-2 font-mono text-xs">
+          {entry.data.stack.map((tech) => (
+            <span style="color: var(--color-text-subtle);">{tech}</span>
+          ))}
+        </div>
+
+        {entry.data.metrics.length > 0 && (
+          <dl class="mt-10 grid gap-x-10 gap-y-4 sm:grid-cols-2">
+            {entry.data.metrics.map((m) => (
+              <div>
+                <dt
+                  class="font-mono text-xs uppercase tracking-wider"
+                  style="color: var(--color-text-subtle);"
+                >
+                  {m.label}
+                </dt>
+                <dd class="mt-1 font-mono text-lg" style="color: var(--color-text);">
+                  {m.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </div>
+    </div>
+
+    <article class="prose-custom mt-16 max-w-none" style="color: var(--color-text-muted);">
+      <Content />
+    </article>
+
+    <div class="mt-20 flex items-center justify-between font-mono text-xs">
+      <a href="/#work" style="color: var(--color-text-muted);">← All work</a>
+      <a
+        href="mailto:nycruslan@gmail.com"
+        class="px-4 py-2"
+        data-magnetic
+        style="border: 1px solid var(--color-border-strong); color: var(--color-text);"
+      >
+        Get in touch →
+      </a>
+    </div>
+  </main>
+</Layout>
+

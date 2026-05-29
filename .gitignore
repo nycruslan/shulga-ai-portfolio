@@ -17,6 +17,12 @@ pnpm-debug.log*
 .env
 .env.production
 
+# Vercel project config
+.vercel/
+
+# Claude Code session data
+.claude/
+
 # macOS-specific files
 .DS_Store
 

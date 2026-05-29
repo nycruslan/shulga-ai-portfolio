@@ -1,0 +1,35 @@
+---
+title: Multimodal document pipelines
+blurb: Document and image processing pipelines on Claude Vision and GPT-4V, with Gemini added recently for cost reasons. Handles the first pass of compliance reviews that used to sit with analysts.
+stack:
+  - Claude Vision
+  - GPT-4V
+  - Gemini
+  - OCR
+  - Compliance review automation
+metrics:
+  - label: Use case
+    value: First-pass compliance review
+  - label: Originally done by
+    value: Human analysts
+shape: pipeline
+order: 5
+---
+
+## The problem
+
+Compliance review meant analysts opening PDFs and scanning for specific patterns. Hundreds a day. The patterns were teachable but rote. The work was the kind that makes good analysts quit.
+
+## The shape
+
+A pipeline that takes scanned and digital documents, OCRs where needed, hands them to a Vision model with a structured extraction prompt, and produces a JSON report flagged with the patterns found. The analyst reviews the JSON, not the PDF. Spot-check rate is much higher than full read rate.
+
+## Key decisions
+
+- **Structured extraction, not summarization.** Summaries hide. A schema forces the model to commit to a yes/no per pattern, with citations to the page.
+- **Multi-model pass on disagreement.** When Claude and GPT-4V disagree on a flag, the doc goes to Gemini as tiebreaker. Cheaper than escalating to human first.
+- **The human reviews the report, not the doc.** They open the doc only when the report flags something.
+
+## What broke
+
+Early prompts asked for "anything suspicious." That returned everything. The current prompts enumerate the patterns by name with examples and require citation. False positives dropped, recall held.

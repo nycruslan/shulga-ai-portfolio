@@ -1,0 +1,35 @@
+---
+title: Hybrid retrieval pipeline
+blurb: "Replaced an embedding-only RAG with a hybrid pipeline: dense plus sparse retrieval, cross-encoder re-ranking, indexed across Pinecone, Weaviate, and pgvector depending on the use case. The pieces that mattered weren't the models. They were the eval harness and the index strategy per domain."
+stack:
+  - Pinecone
+  - Weaviate
+  - pgvector
+  - Cross-encoder re-ranking
+  - RAGAS
+metrics:
+  - label: Retrieval precision improvement
+    value: "~35%"
+  - label: Eval cadence
+    value: nightly
+shape: layers
+order: 2
+---
+
+## The problem
+
+The v1 RAG was embedding-only with a single index. Recall was fine on general queries. On the things that actually mattered — acronym-heavy compliance docs, code lookups, deeply nested policy text — it missed.
+
+## The shape
+
+Three retrievers run in parallel: dense (domain-tuned embeddings), sparse (BM25 over chunked text), and a small cross-encoder on the top-K union. Per use case, the index is whatever fits — Pinecone for the high-traffic general index, Weaviate where we needed hybrid out of the box, pgvector where the index lived next to relational data and joins beat round-trips.
+
+## Key decisions
+
+- **Per-domain index, not one big lake.** Compliance text, code, policy, customer correspondence — each gets its own embedding model and chunking strategy. The "one giant index" pattern loses on every metric that matters.
+- **The eval harness is the artifact.** Nightly RAGAS runs against a versioned golden set. Every retrieval change ships behind that.
+- **Re-ranker is small and aggressive.** A bi-encoder gives you 100 candidates. The cross-encoder picks the 5 that matter. Skip this step and the LLM will quote the wrong document confidently.
+
+## What broke
+
+Early on we tuned for top-1 precision and the LLM started hallucinating where the source didn't quite answer the question. Now we tune for top-5 recall and let the model say "I don't have that."

@@ -1,0 +1,36 @@
+---
+title: Multi-agent orchestration platform
+blurb: Production multi-agent workflows used by several thousand employees firm-wide. LangGraph orchestrates Claude Agent SDK and OpenAI Agents SDK. Each agent has persistent memory and calls internal tools. Irreversible actions pause for a human checkpoint.
+stack:
+  - LangGraph
+  - Claude Agent SDK
+  - OpenAI Agents SDK
+  - Python
+  - React
+metrics:
+  - label: Manual processing cut on flagship workflow
+    value: "~55%"
+  - label: Concurrent users at peak
+    value: several thousand
+shape: graph
+order: 1
+---
+
+## The problem
+
+A handful of operational workflows ate analyst time every day. Each one had the same shape: pull data from 3-5 internal systems, summarize, decide, log. The decision was the only part that needed a human, and most of the time even that was reflex.
+
+## The shape
+
+LangGraph as the orchestrator. Each node is an agent (Claude or GPT) with a narrow tool surface and persistent memory in Redis. Agents talk through typed message passing, not free-form chat. Irreversible actions — anything that writes to a system of record — pause for a human checkpoint with the proposed diff inline.
+
+## Key decisions
+
+- **Typed messages between agents.** Free-form chat between agents drifts in days. A schema doesn't.
+- **Per-agent memory, not shared.** Easier to evict, easier to debug. Cross-agent context flows through explicit handoff messages.
+- **Human checkpoint on irreversible writes, never on reads.** The bar for interrupting a human is high. Reads happen freely, writes pause.
+- **Replay-from-step.** Every agent invocation is logged with inputs and outputs. Failed runs replay from the failing step, not from scratch.
+
+## What broke
+
+The first version had agents calling each other recursively until token budget ran out. Now there's a depth limit and a per-run token cap enforced by the orchestrator, not the agents.

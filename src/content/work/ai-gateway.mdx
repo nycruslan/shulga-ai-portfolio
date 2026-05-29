@@ -1,0 +1,31 @@
+---
+title: Model-agnostic AI gateway
+blurb: An AI gateway on top of AWS Bedrock and Azure OpenAI, with direct Anthropic API access for newer Claude models. Around 8 product teams route through it for model selection, automatic failover, and centralized cost tracking across Claude, GPT-4, Llama, and Titan.
+stack:
+  - AWS Bedrock
+  - Azure OpenAI
+  - Anthropic API
+  - Cost tracking
+  - Provider failover
+metrics:
+  - label: Product teams routing through
+    value: "~8"
+  - label: Providers supported
+    value: 3 primary, 4+ models
+shape: gateway
+order: 4
+---
+
+## The problem
+
+Each product team had picked a provider. Costs were everywhere and nowhere. When a provider degraded, the team that depended on it noticed in customer reports, not in dashboards.
+
+## The shape
+
+One gateway with a unified request schema. Routes by use case, not by team preference: chat goes to Claude, structured extraction to whichever model is cheapest per token that week, multimodal to Vision-capable models. Automatic failover when a primary provider 5xx's. Cost tracked per team, per use case, per request.
+
+## Key decisions
+
+- **Route on use case, not team preference.** Teams don't pick models. Use cases do. The gateway has the routing table.
+- **Failover is automatic and silent.** Provider outages don't page anyone on the gateway team unless they're sustained.
+- **Cost dashboards are public.** Every team sees its spend in real time. The cost conversations stopped being arguments.

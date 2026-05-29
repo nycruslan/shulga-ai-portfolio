@@ -1,0 +1,252 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+type Action = {
+  id: string;
+  title: string;
+  hint?: string;
+  keywords?: string;
+  run: () => void;
+};
+
+export default function CommandPalette() {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [activeIdx, setActiveIdx] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const actions: Action[] = useMemo(
+    () => [
+      {
+        id: 'chat',
+        title: 'Ask my portfolio',
+        hint: 'Open the in-browser AI chat',
+        keywords: 'chat ai ask llm question',
+        run: () => window.dispatchEvent(new CustomEvent('open-ask-me')),
+      },
+      {
+        id: 'work',
+        title: 'Jump to work',
+        keywords: 'projects portfolio cases',
+        run: () => location.assign('/#work'),
+      },
+      {
+        id: 'about',
+        title: 'Jump to about',
+        keywords: 'story bio',
+        run: () => location.assign('/#about'),
+      },
+      {
+        id: 'contact',
+        title: 'Jump to contact',
+        keywords: 'email reach hello',
+        run: () => location.assign('/#contact'),
+      },
+      {
+        id: 'email',
+        title: 'Copy email',
+        hint: 'nycruslan@gmail.com',
+        keywords: 'mail address',
+        run: async () => {
+          try {
+            await navigator.clipboard.writeText('nycruslan@gmail.com');
+            flash('Email copied to clipboard');
+          } catch {
+            flash('nycruslan@gmail.com');
+          }
+        },
+      },
+      {
+        id: 'github',
+        title: 'GitHub →',
+        hint: 'github.com/nycruslan',
+        keywords: 'code source repo',
+        run: () => window.open('https://github.com/nycruslan', '_blank'),
+      },
+      {
+        id: 'linkedin',
+        title: 'LinkedIn →',
+        hint: 'linkedin.com/in/nycruslan',
+        keywords: 'profile network',
+        run: () => window.open('https://www.linkedin.com/in/nycruslan/', '_blank'),
+      },
+      {
+        id: 'resume',
+        title: 'View resume JSON',
+        hint: '/api/me.json',
+        keywords: 'cv api data',
+        run: () => window.open('/api/me.json', '_blank'),
+      },
+    ],
+    []
+  );
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return actions;
+    return actions.filter((a) => (a.title + ' ' + (a.keywords || '')).toLowerCase().includes(q));
+  }, [query, actions]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setOpen((v) => !v);
+        return;
+      }
+      if (!open) return;
+      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActiveIdx((i) => Math.min(filtered.length - 1, i + 1));
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActiveIdx((i) => Math.max(0, i - 1));
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const action = filtered[activeIdx];
+        if (action) {
+          setOpen(false);
+          action.run();
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, filtered, activeIdx]);
+
+  useEffect(() => {
+    if (open) {
+      setQuery('');
+      setActiveIdx(0);
+      setTimeout(() => inputRef.current?.focus(), 30);
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      role="dialog"
+      aria-label="Command palette"
+      onClick={() => setOpen(false)}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 10000,
+        background: 'rgba(8, 9, 10, 0.7)',
+        backdropFilter: 'blur(6px)',
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        paddingTop: '15vh',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 'min(560px, 92vw)',
+          background: '#0e1011',
+          border: '1px solid #2a2d30',
+          borderRadius: 8,
+          boxShadow: '0 24px 48px rgba(0,0,0,0.5)',
+          overflow: 'hidden',
+          fontFamily: 'var(--font-mono)',
+        }}
+      >
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setActiveIdx(0);
+          }}
+          placeholder="Search commands…"
+          style={{
+            width: '100%',
+            padding: '14px 18px',
+            background: 'transparent',
+            border: 'none',
+            outline: 'none',
+            color: '#e6e7e8',
+            fontSize: 14,
+            fontFamily: 'var(--font-mono)',
+            borderBottom: '1px solid #1a1d1f',
+          }}
+        />
+        <ul style={{ listStyle: 'none', margin: 0, padding: 6, maxHeight: '50vh', overflow: 'auto' }}>
+          {filtered.length === 0 && (
+            <li style={{ padding: '14px 12px', color: '#5e6469', fontSize: 13 }}>No matches.</li>
+          )}
+          {filtered.map((a, i) => (
+            <li
+              key={a.id}
+              onMouseEnter={() => setActiveIdx(i)}
+              onClick={() => {
+                setOpen(false);
+                a.run();
+              }}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '10px 12px',
+                borderRadius: 4,
+                cursor: 'pointer',
+                background: i === activeIdx ? '#1a1d1f' : 'transparent',
+                color: i === activeIdx ? '#e6e7e8' : '#8a8f98',
+                fontSize: 13,
+              }}
+            >
+              <span>{a.title}</span>
+              {a.hint && <span style={{ color: '#5e6469', fontSize: 11 }}>{a.hint}</span>}
+            </li>
+          ))}
+        </ul>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            padding: '8px 14px',
+            borderTop: '1px solid #1a1d1f',
+            fontSize: 10,
+            color: '#5e6469',
+          }}
+        >
+          <span>↑ ↓ navigate</span>
+          <span>↵ select</span>
+          <span>esc close</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function flash(message: string) {
+  const el = document.createElement('div');
+  el.textContent = message;
+  Object.assign(el.style, {
+    position: 'fixed',
+    bottom: '24px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    background: '#1a1d1f',
+    border: '1px solid #2a2d30',
+    color: '#e6e7e8',
+    padding: '10px 16px',
+    borderRadius: '6px',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '12px',
+    zIndex: 10001,
+    boxShadow: '0 12px 24px rgba(0,0,0,0.4)',
+    opacity: '0',
+    transition: 'opacity 200ms',
+  });
+  document.body.appendChild(el);
+  requestAnimationFrame(() => (el.style.opacity = '1'));
+  setTimeout(() => {
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 250);
+  }, 1800);
+}

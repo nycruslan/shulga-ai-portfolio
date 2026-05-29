@@ -1,0 +1,34 @@
+---
+title: Internal MCP servers
+blurb: Custom Model Context Protocol servers that connect Claude to internal APIs and databases. Around 8 product teams use the stack. Features that used to take a sprint now take a day or two.
+stack:
+  - MCP
+  - Python
+  - Anthropic API
+  - Internal APIs
+metrics:
+  - label: Teams using the stack
+    value: "~8"
+  - label: Typical feature ship time
+    value: 1-2 days vs 1 sprint
+shape: mesh
+order: 3
+---
+
+## The problem
+
+Every team building on Claude was writing their own glue to internal systems. Auth, retry, schema, observability — five times over, slightly differently each time.
+
+## The shape
+
+A library of MCP servers, one per internal system, with a shared base that handles auth, rate limiting, structured errors, and OTel traces. Teams compose the ones they need. Adding a new tool means writing the resource handler, not the plumbing.
+
+## Key decisions
+
+- **Servers are libraries, not services.** Each team runs them in-process. No extra hop, no extra failure mode, no shared infra to operate.
+- **Schema is enforced at the boundary.** Tool inputs and outputs are Pydantic models. The LLM gets a clean schema; the caller gets typed responses.
+- **Observability is mandatory, not optional.** Every tool call logs to OTel with the prompt hash and the tool result. Audit is for free.
+
+## Why it sped things up
+
+The old loop was "wire up auth, write the API client, handle retries, decide on a schema for the LLM, debug it for two days." The new loop is "import the server, write the tool function, ship."

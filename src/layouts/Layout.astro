@@ -1,5 +1,9 @@
 ---
 import '../styles/global.css';
+import { ClientRouter } from 'astro:transitions';
+import CustomCursor from '../components/islands/CustomCursor';
+import CommandPalette from '../components/islands/CommandPalette';
+import AskMe from '../components/islands/AskMe';
 
 interface Props {
   title?: string;
@@ -36,8 +40,58 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://shulga.ai')
     <meta name="twitter:description" content={description} />
 
     <meta name="theme-color" content="#08090a" />
+
+    <ClientRouter />
   </head>
   <body>
     <slot />
+    <CustomCursor client:only="react" />
+    <CommandPalette client:only="react" />
+    <AskMe client:only="react" />
+
+    <script>
+      import Lenis from 'lenis';
+
+      let lenis: Lenis | null = null;
+
+      function initLenis() {
+        if (lenis) lenis.destroy();
+        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (reduced) return;
+        lenis = new Lenis({ duration: 1.15, smoothWheel: true });
+        function raf(time: number) {
+          lenis?.raf(time);
+          requestAnimationFrame(raf);
+        }
+        requestAnimationFrame(raf);
+        // expose for GSAP ScrollTrigger sync
+        (window as any).__lenis = lenis;
+      }
+
+      initLenis();
+      document.addEventListener('astro:after-swap', initLenis);
+
+      // Console easter egg
+      const ascii = `
+   ╭─◉─╮      ╭─◉─╮
+   │   │╲    ╱│   │
+   ╰─◉─╯ ╲  ╱ ╰─◉─╯
+        ╲╲╱╱
+         ◉   ← multi-agent orchestration, in your terminal
+        ╱╱╲╲
+   ╭─◉─╯  ╲  ╱  ╰─◉─╮
+   │   │   ╲╱   │   │
+   ╰─◉─╯        ╰─◉─╯
+`;
+      console.log(
+        '%c' + ascii,
+        'color: #8a8f98; font-family: monospace; font-size: 11px; line-height: 1.2;'
+      );
+      console.log(
+        '%cif you are reading this we should talk → %cnycruslan@gmail.com',
+        'color: #5e6469; font-family: monospace;',
+        'color: #e6e7e8; font-family: monospace; text-decoration: underline;'
+      );
+    </script>
   </body>
 </html>
