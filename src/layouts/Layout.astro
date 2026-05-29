@@ -46,8 +46,8 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://shulga.ai')
   <body>
     <div data-preloader aria-hidden="true">
       <span class="preloader-name">
-        {'RUSLAN SHULGA'.split('').map(c => (
-          <span class="preloader-char">{c === ' ' ? ' ' : c}</span>
+        {'RUSLAN SHULGA'.split('').map((c, i) => (
+          <span class="preloader-char" style={`--char-delay: ${0.1 + i * 0.03}s`}>{c === ' ' ? ' ' : c}</span>
         ))}
       </span>
     </div>
@@ -57,42 +57,16 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://shulga.ai')
     <AskMe client:only="react" />
 
     <script>
-      import { gsap } from 'gsap';
-
-      function runPreloader() {
+      // Remove preloader after CSS animation completes (safety + cleanup)
+      function cleanPreloader() {
         const el = document.querySelector('[data-preloader]') as HTMLElement | null;
         if (!el) return;
         const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         if (reduced) { el.remove(); return; }
-
-        // Safety fallback — remove preloader no matter what after 3.5s
-        const safety = setTimeout(() => { if (el.parentNode) el.remove(); }, 3500);
-
-        const chars = el.querySelectorAll<HTMLElement>('.preloader-char');
-        const tl = gsap.timeline({
-          onComplete: () => {
-            clearTimeout(safety);
-            el.remove();
-          },
-        });
-
-        // Chars slide up from below into view
-        tl.to(chars, {
-          yPercent: 0,
-          duration: 0.6,
-          stagger: 0.03,
-          ease: 'power3.out',
-        }, 0.1);
-
-        // Hold for a moment, then slide the whole overlay up
-        tl.to(el, {
-          yPercent: -100,
-          duration: 0.7,
-          ease: 'power3.inOut',
-        }, 1.4);
+        // CSS animation runs ~2.1s (1.4s delay + 0.7s slide). Remove DOM node after.
+        setTimeout(() => { if (el.parentNode) el.remove(); }, 2500);
       }
-
-      runPreloader();
+      cleanPreloader();
       document.addEventListener('astro:after-swap', () => {
         const pre = document.querySelector('[data-preloader]') as HTMLElement | null;
         if (pre) pre.remove();

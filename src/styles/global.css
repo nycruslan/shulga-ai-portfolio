@@ -129,7 +129,7 @@ html.lenis body {
   }
 }
 
-/* Hero word reveal masks */
+/* Hero word reveal — pure CSS, no GSAP dependency */
 .word-mask {
   display: inline-flex;
   overflow: hidden;
@@ -139,10 +139,31 @@ html.lenis body {
 
 .word {
   display: inline-block;
-  will-change: transform;
+  transform: translateY(110%);
+  animation: word-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: var(--word-delay, 1.8s);
 }
 
-/* Preloader */
+@keyframes word-up {
+  to { transform: translateY(0); }
+}
+
+/* Hero sub-elements fade in */
+[data-hero-reveal] {
+  opacity: 0;
+  transform: translateY(14px);
+  animation: hero-fade 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+[data-hero-reveal="0"] { animation-delay: 2.2s; }
+[data-hero-reveal="2"] { animation-delay: 2.35s; }
+[data-hero-reveal="3"] { animation-delay: 2.5s; }
+
+@keyframes hero-fade {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Preloader — pure CSS animation */
 [data-preloader] {
   position: fixed;
   inset: 0;
@@ -152,6 +173,11 @@ html.lenis body {
   align-items: center;
   justify-content: center;
   pointer-events: none;
+  animation: preloader-exit 0.7s cubic-bezier(0.7, 0, 0.2, 1) 1.4s forwards;
+}
+
+@keyframes preloader-exit {
+  to { transform: translateY(-100%); }
 }
 
 [data-preloader] .preloader-name {
@@ -166,6 +192,8 @@ html.lenis body {
 [data-preloader] .preloader-char {
   display: inline-block;
   transform: translateY(110%);
+  animation: word-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: var(--char-delay, 0s);
 }
 
 /* Section heading scroll reveals */
@@ -188,9 +216,18 @@ html.lenis body {
   }
   .word {
     transform: none !important;
+    animation: none !important;
+  }
+  [data-hero-reveal] {
+    opacity: 1;
+    transform: none;
+    animation: none !important;
   }
   [data-preloader] {
     display: none;
+  }
+  [data-preloader] .preloader-char {
+    animation: none !important;
   }
 }
 
