@@ -15,6 +15,7 @@ const links = [
   <p
     class="mb-12 font-mono text-xs tracking-widest uppercase"
     style="color: var(--color-text-subtle);"
+    data-section-reveal
   >
     Contact
   </p>
@@ -23,6 +24,7 @@ const links = [
     <h2
       class="text-2xl font-medium md:text-3xl"
       style="color: var(--color-text); letter-spacing: -0.01em;"
+      data-section-reveal
     >
       Working on something interesting? Let's talk.
     </h2>
@@ -60,8 +62,5 @@ const links = [
   class="mx-auto max-w-5xl px-6 py-8 font-mono text-xs"
   style="border-top: 1px solid var(--color-border); color: var(--color-text-subtle);"
 >
-  <div class="flex justify-between">
-    <span>© {new Date().getFullYear()} Ruslan Shulga</span>
-    <span>Built with Astro</span>
-  </div>
+  <span>© {new Date().getFullYear()} Ruslan Shulga</span>
 </footer>

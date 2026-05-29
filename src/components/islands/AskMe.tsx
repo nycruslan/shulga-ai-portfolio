@@ -133,12 +133,13 @@ export default function AskMe() {
         onClick={() => setOpen(true)}
         aria-label="Ask my portfolio"
         data-magnetic
+        className="askme-fab"
         style={{
           position: 'fixed',
-          bottom: 24,
-          right: 24,
+          bottom: 16,
+          right: 16,
           zIndex: 9998,
-          padding: '12px 18px',
+          padding: '10px 14px',
           background: '#0e1011',
           border: '1px solid #2a2d30',
           color: '#e6e7e8',

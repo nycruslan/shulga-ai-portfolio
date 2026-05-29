@@ -19,10 +19,18 @@ import HeroShader from './islands/HeroShader';
     class="text-4xl font-medium tracking-tight md:text-6xl md:leading-[1.05]"
     style="color: var(--color-text); letter-spacing: -0.02em;"
     transition:name="hero-title"
-    data-hero-reveal="1"
+    data-hero-title
   >
-    I build production AI<br />
-    platforms for the enterprise.
+    <span class="block" data-line>
+      {['I','build','production','AI'].map(w => (
+        <span class="word-mask"><span class="word" data-word>{w}</span></span>
+      ))}
+    </span>
+    <span class="block" data-line>
+      {['platforms','for','the','enterprise.'].map(w => (
+        <span class="word-mask"><span class="word" data-word>{w}</span></span>
+      ))}
+    </span>
   </h1>
 
   <p
@@ -64,28 +72,55 @@ import HeroShader from './islands/HeroShader';
     </button>
   </div>
 
-  <p class="mt-10 font-mono text-xs" style="color: var(--color-text-subtle);">
+  <p class="mt-10 hidden font-mono text-xs md:block" style="color: var(--color-text-subtle);">
     Press <kbd class="px-1.5 py-0.5 rounded border" style="border-color: var(--color-border); color: var(--color-text-muted);">⌘ K</kbd> for commands
   </p>
 </section>
 
 <script>
-  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (!reduced) {
-    const els = document.querySelectorAll<HTMLElement>('[data-hero-reveal]');
-    els.forEach((el, i) => {
-      el.style.opacity = '0';
-      el.style.transform = 'translateY(12px)';
-      el.style.transition = 'opacity 700ms ease-out, transform 700ms ease-out';
-      el.style.transitionDelay = `${120 + i * 90}ms`;
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          el.style.opacity = '1';
-          el.style.transform = 'translateY(0)';
-        });
+  import { gsap } from 'gsap';
+
+  function initHero() {
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (reduced) {
+      document.querySelectorAll<HTMLElement>('[data-word]').forEach(w => w.style.transform = 'none');
+      document.querySelectorAll<HTMLElement>('[data-hero-reveal]').forEach(el => {
+        el.style.opacity = '1';
+        el.style.transform = 'none';
       });
+      return;
+    }
+
+    // Wait for preloader to finish before animating
+    const delay = document.querySelector('[data-preloader]') ? 1.8 : 0.2;
+
+    // Word-by-word title reveal
+    const words = document.querySelectorAll<HTMLElement>('[data-word]');
+    gsap.set(words, { yPercent: 110 });
+    gsap.to(words, {
+      yPercent: 0,
+      duration: 0.9,
+      stagger: 0.05,
+      ease: 'power3.out',
+      delay,
+    });
+
+    // Fade in subtitle, CTAs, hint
+    const els = document.querySelectorAll<HTMLElement>('[data-hero-reveal]');
+    gsap.set(els, { opacity: 0, y: 14 });
+    gsap.to(els, {
+      opacity: 1,
+      y: 0,
+      duration: 0.7,
+      stagger: 0.1,
+      ease: 'power2.out',
+      delay: delay + 0.4,
     });
   }
+
+  initHero();
+  document.addEventListener('astro:after-swap', initHero);
 
   // Open chat handler
   document.addEventListener('click', (e) => {
@@ -96,7 +131,8 @@ import HeroShader from './islands/HeroShader';
   });
 
   // Magnetic CTAs
-  if (!reduced && window.matchMedia('(pointer: fine)').matches) {
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!reducedMotion && window.matchMedia('(pointer: fine)').matches) {
     const magnets = document.querySelectorAll<HTMLElement>('[data-magnetic]');
     magnets.forEach((el) => {
       el.addEventListener('mousemove', (e) => {

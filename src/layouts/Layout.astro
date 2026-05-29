@@ -44,10 +44,60 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://shulga.ai')
     <ClientRouter />
   </head>
   <body>
+    <div data-preloader aria-hidden="true">
+      <span class="preloader-name">
+        {'RUSLAN SHULGA'.split('').map(c => (
+          <span class="preloader-char">{c === ' ' ? ' ' : c}</span>
+        ))}
+      </span>
+    </div>
     <slot />
     <CustomCursor client:only="react" />
     <CommandPalette client:only="react" />
     <AskMe client:only="react" />
+
+    <script>
+      import { gsap } from 'gsap';
+
+      function runPreloader() {
+        const el = document.querySelector('[data-preloader]') as HTMLElement | null;
+        if (!el) return;
+        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (reduced) { el.remove(); return; }
+
+        const chars = el.querySelectorAll<HTMLElement>('.preloader-char');
+        gsap.to(chars, {
+          yPercent: -110,
+          duration: 0.5,
+          stagger: 0.03,
+          ease: 'power2.in',
+          delay: 0,
+        });
+
+        gsap.set(chars, { yPercent: 110 });
+        gsap.to(chars, {
+          yPercent: 0,
+          duration: 0.6,
+          stagger: 0.03,
+          ease: 'power3.out',
+          delay: 0.1,
+        });
+
+        gsap.to(el, {
+          yPercent: -100,
+          duration: 0.7,
+          ease: 'power3.inOut',
+          delay: 1.5,
+          onComplete: () => el.remove(),
+        });
+      }
+
+      runPreloader();
+      document.addEventListener('astro:after-swap', () => {
+        const pre = document.querySelector('[data-preloader]') as HTMLElement | null;
+        if (pre) pre.remove();
+      });
+    </script>
 
     <script>
       import Lenis from 'lenis';

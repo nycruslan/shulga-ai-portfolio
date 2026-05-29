@@ -13,6 +13,7 @@ const projects = all.sort((a, b) => a.data.order - b.data.order);
   <p
     class="mb-12 font-mono text-xs tracking-widest uppercase"
     style="color: var(--color-text-subtle);"
+    data-section-reveal
   >
     Selected Work
   </p>
@@ -82,7 +83,7 @@ const projects = all.sort((a, b) => a.data.order - b.data.order);
                   </dl>
                 )}
 
-                <div class="mt-6 font-mono text-xs opacity-0 group-hover:opacity-100 transition-opacity" style="color: var(--color-text-muted);">
+                <div class="mt-6 font-mono text-xs opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity" style="color: var(--color-text-muted);">
                   Read case study →
                 </div>
               </div>
@@ -172,7 +173,16 @@ const projects = all.sort((a, b) => a.data.order - b.data.order);
       });
     });
 
-    // Force ScrollTrigger to evaluate after layout
+    // Section heading reveals (About, Selected Work, Contact)
+    document.querySelectorAll<HTMLElement>('[data-section-reveal]').forEach((el) => {
+      ScrollTrigger.create({
+        trigger: el,
+        start: 'top 90%',
+        once: true,
+        onEnter: () => el.classList.add('is-in'),
+      });
+    });
+
     requestAnimationFrame(() => ScrollTrigger.refresh());
   }
 
