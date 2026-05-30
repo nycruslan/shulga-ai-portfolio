@@ -6,7 +6,7 @@ import vercel from '@astrojs/vercel';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-  site: 'https://shulga.ai',
+  site: 'https://ruslanshulga.com',
   adapter: vercel(),
   integrations: [react(), mdx()],
   vite: {
