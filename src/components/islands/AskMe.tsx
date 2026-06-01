@@ -4,6 +4,7 @@ import { about } from '../../data/about';
 type Msg = { role: 'user' | 'assistant'; content: string };
 
 const SESSION_LIMIT = 20;
+const STORAGE_KEY = 'askme-session';
 
 const SUGGESTED = [
   'What does Ruslan do at JPMC?',
@@ -12,12 +13,32 @@ const SUGGESTED = [
   "What's MCP and why does it matter?",
 ];
 
+function loadSession(): { messages: Msg[]; msgCount: number } {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const data = JSON.parse(raw);
+      return {
+        messages: Array.isArray(data.messages) ? data.messages : [],
+        msgCount: typeof data.msgCount === 'number' ? data.msgCount : 0,
+      };
+    }
+  } catch {}
+  return { messages: [], msgCount: 0 };
+}
+
+function saveSession(messages: Msg[], msgCount: number) {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ messages, msgCount }));
+  } catch {}
+}
+
 export default function AskMe() {
   const [open, setOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const [messages, setMessages] = useState<Msg[]>(() => loadSession().messages);
   const [input, setInput] = useState('');
-  const [msgCount, setMsgCount] = useState(0);
+  const [msgCount, setMsgCount] = useState(() => loadSession().msgCount);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -32,17 +53,39 @@ export default function AskMe() {
   useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden';
+      // Lenis intercepts wheel events globally — stop it so the background doesn't scroll
+      (window as any).__lenis?.stop();
       setTimeout(() => inputRef.current?.focus(), 80);
     } else {
       document.body.style.overflow = '';
+      (window as any).__lenis?.start();
     }
   }, [open]);
 
+  // Scroll to bottom after paint — rAF ensures DOM is updated before reading scrollHeight
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    const el = scrollRef.current;
+    if (!el) return;
+    const id = requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+    return () => cancelAnimationFrame(id);
   }, [messages]);
+
+  // Persist conversation to sessionStorage when streaming finishes
+  useEffect(() => {
+    if (!generating && messages.length > 0) {
+      saveSession(messages, msgCount);
+    }
+  }, [generating, messages, msgCount]);
+
+  // Auto-resize textarea as user types
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [input]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -188,7 +231,8 @@ export default function AskMe() {
       <div
         style={{
           width: 'min(640px, 96vw)',
-          height: 'min(80vh, 720px)',
+          // dvh accounts for virtual keyboard on mobile; vh fallback for older browsers
+          height: 'min(80dvh, 720px)',
           margin: '0 12px 12px',
           background: '#0e1011',
           border: '1px solid #2a2d30',
@@ -246,10 +290,10 @@ export default function AskMe() {
           </button>
         </div>
 
-        {/* Body */}
+        {/* Body — minHeight:0 required for overflow:auto in flex column; overscrollBehavior:contain stops scroll chaining */}
         <div
           ref={scrollRef}
-          style={{ flex: 1, overflow: 'auto', padding: '18px 20px', fontSize: 14, lineHeight: 1.6 }}
+          style={{ flex: 1, minHeight: 0, overflow: 'auto', overscrollBehavior: 'contain', padding: '18px 20px', fontSize: 14, lineHeight: 1.6 }}
         >
           {messages.length === 0 && <Intro onPick={(p) => send(p)} />}
 
@@ -327,6 +371,7 @@ export default function AskMe() {
                 resize: 'none',
                 outline: 'none',
                 maxHeight: 120,
+                overflowY: 'auto',
               }}
             />
             <button

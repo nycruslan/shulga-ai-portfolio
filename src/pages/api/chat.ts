@@ -1,14 +1,14 @@
 import type { APIRoute } from 'astro';
+import { CHAT_API_KEY } from 'astro:env/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { systemPrompt, about } from '../../data/about';
 
 export const prerender = false;
 
 const MAX_MESSAGES = 20;
-const apiKey = import.meta.env.ANTHROPIC_API_KEY;
-const client = apiKey ? new Anthropic({ apiKey }) : null;
 
 export const POST: APIRoute = async ({ request }) => {
+  const client = CHAT_API_KEY ? new Anthropic({ apiKey: CHAT_API_KEY }) : null;
   if (!client) {
     return new Response(JSON.stringify({ error: `Chat unavailable — contact ${about.email}` }), {
       status: 503,
@@ -40,7 +40,7 @@ export const POST: APIRoute = async ({ request }) => {
 
   const stream = await client.messages.stream({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 300,
+    max_tokens: 500,
     system: systemPrompt,
     messages,
   });
