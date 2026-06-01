@@ -1,9 +1,14 @@
 ---
+import { about } from '../data/about';
+
+// Single source of truth is about.ts. Strip protocol/www/trailing slash for display.
+const shortUrl = (url: string) => url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+
 const links = [
-  { label: 'Email', href: 'mailto:nycruslan@gmail.com', value: 'nycruslan@gmail.com' },
-  { label: 'LinkedIn', href: 'https://www.linkedin.com/in/nycruslan/', value: 'linkedin.com/in/nycruslan' },
-  { label: 'GitHub', href: 'https://github.com/nycruslan', value: 'github.com/nycruslan' },
-  { label: 'Location', href: null, value: 'New York, NY' },
+  { label: 'Email', href: `mailto:${about.email}`, value: about.email },
+  { label: 'LinkedIn', href: about.linkedin, value: shortUrl(about.linkedin) },
+  { label: 'GitHub', href: about.github, value: shortUrl(about.github) },
+  { label: 'Location', href: null, value: about.location },
 ];
 ---
 

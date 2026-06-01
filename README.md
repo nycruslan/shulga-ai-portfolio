@@ -1,43 +1,67 @@
-# Astro Starter Kit: Minimal
+# ruslanshulga.com
 
-```sh
-npm create astro@latest -- --template minimal
-```
+Personal portfolio for Ruslan Shulga. Built with Astro and React islands, deployed on Vercel.
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+It doubles as a working demo: the hero runs a WebGL shader (OGL), and "Ask my portfolio" is a streaming chat agent backed by Claude Haiku that only answers from a fixed set of facts about my work.
 
-## 🚀 Project Structure
+## Stack
 
-Inside of your Astro project, you'll see the following folders and files:
+- **Astro 6** with the Vercel adapter (static pages + a couple of server routes)
+- **React islands** for the interactive bits (chat, command palette, custom cursor, hero shader)
+- **Tailwind CSS 4** via the Vite plugin, plus CSS variables for the palette
+- **GSAP + Lenis** for scroll reveals and smooth scrolling
+- **@anthropic-ai/sdk** for the chat endpoint
+- **MDX content collection** for case studies
+
+## Project layout
 
 ```text
-/
-├── public/
-├── src/
-│   └── pages/
-│       └── index.astro
-└── package.json
+src/
+├── components/          # Astro sections (Hero, Story, Projects, Contact, Nav)
+│   └── islands/         # React: AskMe, CommandPalette, CustomCursor, HeroShader
+├── content/work/        # Case studies (.mdx) — see content.config.ts for the schema
+├── data/about.ts        # Single source of truth: bio, links, and the chat system prompt
+├── layouts/Layout.astro # <head>, meta/OG/JSON-LD, skip link, preloader, Lenis init
+├── pages/
+│   ├── api/chat.ts      # Streaming chat endpoint (Claude Haiku)
+│   ├── api/me.json.ts   # Machine-readable résumé
+│   ├── work/[slug].astro
+│   └── index.astro
+└── styles/global.css
 ```
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+## Local setup
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
+```sh
+npm install
+cp .env.example .env   # then set CHAT_API_KEY
+npm run dev            # http://localhost:4321
+```
 
-Any static assets, like images, can be placed in the `public/` directory.
+### Environment variables
 
-## 🧞 Commands
+| Variable | Required | Purpose |
+| :-- | :-- | :-- |
+| `CHAT_API_KEY` | for chat | Anthropic API key. Without it, `/api/chat` returns 503 and the rest of the site still works. |
+| `UPSTASH_REDIS_REST_URL` | optional | Enables per-IP rate limiting on `/api/chat`. |
+| `UPSTASH_REDIS_REST_TOKEN` | optional | Pairs with the URL above. Provision both free via the Upstash integration in the Vercel Marketplace. |
 
-All commands are run from the root of the project, from a terminal:
+If the Upstash vars are unset, rate limiting is skipped (fine for local dev).
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
+## Editing content
 
-## 👀 Want to learn more?
+- **Bio, links, chat facts:** `src/data/about.ts`. Everything else imports from here.
+- **Case studies:** add an `.mdx` file under `src/content/work/`. Frontmatter is validated by `src/content.config.ts`.
+- **Social card:** regenerate with `node scripts/gen-og.mjs` (writes `public/og.png`).
 
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+## Commands
+
+| Command | Action |
+| :-- | :-- |
+| `npm run dev` | Local dev server |
+| `npm run build` | Production build to `./dist/` |
+| `npm run preview` | Preview the build locally |
+
+## Deploy
+
+Pushes deploy through Vercel. Set the env vars above in the Vercel project settings.

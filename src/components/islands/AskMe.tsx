@@ -95,6 +95,35 @@ export default function AskMe() {
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
+  // Trap Tab inside the dialog and restore focus to the opener on close
+  useEffect(() => {
+    if (!open) return;
+    const root = containerRef.current;
+    if (!root) return;
+    const opener = document.activeElement as HTMLElement | null;
+    function onTab(e: KeyboardEvent) {
+      if (e.key !== 'Tab') return;
+      const items = root!.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])'
+      );
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    root.addEventListener('keydown', onTab);
+    return () => {
+      root.removeEventListener('keydown', onTab);
+      opener?.focus?.();
+    };
+  }, [open]);
+
   const send = useCallback(async (userText: string) => {
     const text = userText.trim();
     if (!text || generating) return;
@@ -214,6 +243,7 @@ export default function AskMe() {
   return (
     <div
       ref={containerRef}
+      data-lenis-prevent
       role="dialog"
       aria-label="Ask my portfolio"
       onClick={(e) => { if (e.target === containerRef.current) setOpen(false); }}
@@ -293,6 +323,7 @@ export default function AskMe() {
         {/* Body — minHeight:0 required for overflow:auto in flex column; overscrollBehavior:contain stops scroll chaining */}
         <div
           ref={scrollRef}
+          className="themed-scroll"
           style={{ flex: 1, minHeight: 0, overflow: 'auto', overscrollBehavior: 'contain', padding: '18px 20px', fontSize: 14, lineHeight: 1.6 }}
         >
           {messages.length === 0 && <Intro onPick={(p) => send(p)} />}

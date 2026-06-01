@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { about } from '../../data/about';
+
+const shortUrl = (url: string) => url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
 
 type Action = {
   id: string;
@@ -13,6 +16,7 @@ export default function CommandPalette() {
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   const actions: Action[] = useMemo(
     () => [
@@ -44,30 +48,30 @@ export default function CommandPalette() {
       {
         id: 'email',
         title: 'Copy email',
-        hint: 'nycruslan@gmail.com',
+        hint: about.email,
         keywords: 'mail address',
         run: async () => {
           try {
-            await navigator.clipboard.writeText('nycruslan@gmail.com');
+            await navigator.clipboard.writeText(about.email);
             flash('Email copied to clipboard');
           } catch {
-            flash('nycruslan@gmail.com');
+            flash(about.email);
           }
         },
       },
       {
         id: 'github',
         title: 'GitHub →',
-        hint: 'github.com/nycruslan',
+        hint: shortUrl(about.github),
         keywords: 'code source repo',
-        run: () => window.open('https://github.com/nycruslan', '_blank'),
+        run: () => window.open(about.github, '_blank', 'noopener,noreferrer'),
       },
       {
         id: 'linkedin',
         title: 'LinkedIn →',
-        hint: 'linkedin.com/in/nycruslan',
+        hint: shortUrl(about.linkedin),
         keywords: 'profile network',
-        run: () => window.open('https://www.linkedin.com/in/nycruslan/', '_blank'),
+        run: () => window.open(about.linkedin, '_blank', 'noopener,noreferrer'),
       },
       {
         id: 'resume',
@@ -117,17 +121,41 @@ export default function CommandPalette() {
   }, [open, filtered, activeIdx]);
 
   useEffect(() => {
-    if (open) {
-      setQuery('');
-      setActiveIdx(0);
-      setTimeout(() => inputRef.current?.focus(), 30);
+    if (!open) return;
+    setQuery('');
+    setActiveIdx(0);
+    const opener = document.activeElement as HTMLElement | null;
+    setTimeout(() => inputRef.current?.focus(), 30);
+    function onTab(e: KeyboardEvent) {
+      if (e.key !== 'Tab') return;
+      const root = dialogRef.current;
+      if (!root) return;
+      const items = root.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])'
+      );
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
+    window.addEventListener('keydown', onTab);
+    return () => {
+      window.removeEventListener('keydown', onTab);
+      opener?.focus?.();
+    };
   }, [open]);
 
   if (!open) return null;
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-label="Command palette"
       onClick={() => setOpen(false)}
@@ -175,7 +203,7 @@ export default function CommandPalette() {
             borderBottom: '1px solid #1a1d1f',
           }}
         />
-        <ul style={{ listStyle: 'none', margin: 0, padding: 6, maxHeight: '50vh', overflow: 'auto' }}>
+        <ul className="themed-scroll" style={{ listStyle: 'none', margin: 0, padding: 6, maxHeight: '50vh', overflow: 'auto' }}>
           {filtered.length === 0 && (
             <li style={{ padding: '14px 12px', color: '#5e6469', fontSize: 13 }}>No matches.</li>
           )}

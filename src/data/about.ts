@@ -4,7 +4,7 @@ export const about = {
   company: 'JPMorgan Chase',
   location: 'New York, NY',
   email: 'nycruslan@gmail.com',
-  linkedin: 'https://linkedin.com/in/nycruslan',
+  linkedin: 'https://www.linkedin.com/in/nycruslan/',
   github: 'https://github.com/nycruslan',
   portfolio: 'https://ruslanshulga.com',
   yearsTotal: 9,
@@ -63,7 +63,7 @@ Looking for: ${about.lookingFor}
 
 Why hire him: He's done the hard part. Took AI from prototype to production at enterprise scale, inside a heavily regulated bank. The systems he built serve thousands of people daily, and they hold up. Not demos. Not prototypes. Production.
 
-This portfolio site (ruslanshulga.com) is itself a working demo of his craft. This chat runs on Claude Haiku through a streaming API he built. The hero uses a WebGPU shader. The stack is Astro with React islands, Tailwind, Vercel.
+This portfolio site (ruslanshulga.com) is itself a working demo of his craft. This chat runs on Claude Haiku through a streaming API he built. The hero uses a WebGL shader (OGL). The stack is Astro with React islands, Tailwind, Vercel.
 
 Contact: ${about.email}
 LinkedIn: ${about.linkedin}

@@ -4,6 +4,7 @@ import { ClientRouter } from 'astro:transitions';
 import CustomCursor from '../components/islands/CustomCursor';
 import CommandPalette from '../components/islands/CommandPalette';
 import AskMe from '../components/islands/AskMe';
+import { about } from '../data/about';
 
 interface Props {
   title?: string;
@@ -15,7 +16,21 @@ const {
   description = 'VP Engineering at JPMorgan Chase. I build production AI platforms used by thousands of internal users every day.',
 } = Astro.props;
 
-const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://shulga.ai').toString();
+const siteBase = Astro.site ?? new URL(about.portfolio);
+const canonical = new URL(Astro.url.pathname, siteBase).toString();
+const ogImage = new URL('/og.png', siteBase).toString();
+
+const personSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'Person',
+  name: about.name,
+  url: about.portfolio,
+  jobTitle: about.role,
+  worksFor: { '@type': 'Organization', name: about.company },
+  address: { '@type': 'PostalAddress', addressLocality: about.location },
+  email: `mailto:${about.email}`,
+  sameAs: [about.linkedin, about.github],
+};
 ---
 
 <!doctype html>
@@ -34,16 +49,23 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://shulga.ai')
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
 
     <meta name="theme-color" content="#08090a" />
+
+    <script type="application/ld+json" set:html={JSON.stringify(personSchema)} />
 
     <ClientRouter />
   </head>
   <body>
+    <a href="#main" class="skip-link">Skip to content</a>
     <div data-preloader aria-hidden="true">
       <span class="preloader-name">
         {'RUSLAN SHULGA'.split('').map((c, i) => (

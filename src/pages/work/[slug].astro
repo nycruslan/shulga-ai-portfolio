@@ -2,6 +2,7 @@
 import { getCollection, render, type CollectionEntry } from 'astro:content';
 import Layout from '../../layouts/Layout.astro';
 import Nav from '../../components/Nav.astro';
+import { about } from '../../data/about';
 
 export async function getStaticPaths() {
   const work = await getCollection('work');
@@ -22,7 +23,7 @@ const order = entry.data.order;
 
 <Layout title={`${entry.data.title} — Ruslan Shulga`} description={entry.data.blurb}>
   <Nav />
-  <main class="mx-auto max-w-3xl px-6 pt-20 pb-32 md:pt-32">
+  <main id="main" tabindex="-1" class="mx-auto max-w-3xl px-6 pt-20 pb-32 md:pt-32">
     <a
       href="/#work"
       class="font-mono text-xs uppercase tracking-widest"
@@ -85,7 +86,7 @@ const order = entry.data.order;
     <div class="mt-20 flex items-center justify-between font-mono text-xs">
       <a href="/#work" style="color: var(--color-text-muted);">← All work</a>
       <a
-        href="mailto:nycruslan@gmail.com"
+        href={`mailto:${about.email}`}
         class="px-4 py-2"
         data-magnetic
         style="border: 1px solid var(--color-border-strong); color: var(--color-text);"
