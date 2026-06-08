@@ -3,9 +3,9 @@ export const prerender = false;
 import AdminLogin from '../../components/islands/AdminLogin.tsx';
 import { auth } from '../../lib/auth';
 
-// Already signed in? Go to the dashboard.
-if (auth && Astro.locals.user) return Astro.redirect('/admin');
 const configured = Boolean(auth);
+const signedIn = Boolean(auth && Astro.locals.user);
+const email = Astro.locals.user?.email ?? '';
 ---
 
 <!doctype html>
@@ -31,7 +31,7 @@ const configured = Boolean(auth);
       <h1>Admin</h1>
       {
         configured ? (
-          <AdminLogin client:load />
+          <AdminLogin client:load signedIn={signedIn} email={email} />
         ) : (
           <p class="muted">Admin is not configured yet. See SETUP-ADMIN.md.</p>
         )
