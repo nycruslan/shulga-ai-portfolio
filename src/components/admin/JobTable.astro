@@ -1,0 +1,66 @@
+---
+interface Job {
+  company: string;
+  title: string;
+  score: number;
+  comp: string;
+  url: string;
+  location: string;
+  contacts: number;
+}
+const { jobs, scroll = false } = Astro.props as { jobs: Job[]; scroll?: boolean };
+const tone = (n: number) =>
+  n >= 80 ? 'text-emerald-300' : n >= 68 ? 'text-sky-300' : 'text-text-muted';
+---
+
+<div
+  class:list={[
+    'overflow-x-auto rounded-xl border border-border bg-bg-elevated/40',
+    scroll && 'max-h-[28rem] overflow-y-auto themed-scroll',
+  ]}
+>
+  <table class="w-full border-collapse text-sm">
+    <thead class="sticky top-0 z-10 bg-bg-elevated/90 backdrop-blur">
+      <tr class="text-left font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+        <th class="px-4 py-2.5 font-medium">Company</th>
+        <th class="px-4 py-2.5 font-medium">Role</th>
+        <th class="px-4 py-2.5 font-medium">Score</th>
+        <th class="px-4 py-2.5 font-medium">TC</th>
+        <th class="px-4 py-2.5 font-medium">Location</th>
+        <th class="px-4 py-2.5"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {
+        jobs.map((j) => (
+          <tr class="border-t border-border/70 transition-colors hover:bg-white/[0.02]">
+            <td class="whitespace-nowrap px-4 py-2.5">
+              {j.company}
+              {j.contacts > 0 && <span class="ml-1.5 text-text-subtle">· 👥 {j.contacts}</span>}
+            </td>
+            <td class="px-4 py-2.5 text-text-muted">{j.title}</td>
+            <td class={'whitespace-nowrap px-4 py-2.5 font-mono tabular-nums ' + tone(j.score)}>
+              {j.score}%
+            </td>
+            <td class="whitespace-nowrap px-4 py-2.5 font-mono tabular-nums text-text-muted">
+              {j.comp || '—'}
+            </td>
+            <td class="whitespace-nowrap px-4 py-2.5 text-text-muted">{j.location || '—'}</td>
+            <td class="px-4 py-2.5 text-right">
+              {j.url && (
+                <a
+                  href={j.url}
+                  target="_blank"
+                  rel="noopener"
+                  class="whitespace-nowrap text-text-muted underline-offset-4 hover:text-text hover:underline"
+                >
+                  apply →
+                </a>
+              )}
+            </td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+</div>

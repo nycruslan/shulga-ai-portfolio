@@ -1,5 +1,6 @@
 ---
 export const prerender = false;
+import '../../styles/global.css';
 import AdminLogin from '../../components/islands/AdminLogin.tsx';
 import { auth } from '../../lib/auth';
 
@@ -14,28 +15,24 @@ const email = Astro.locals.user?.email ?? '';
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>Admin · Sign in</title>
-    <style>
-      :root { color-scheme: light dark; }
-      body { font: 15px/1.5 -apple-system, system-ui, sans-serif; margin: 0; }
-      .wrap { max-width: 22rem; margin: 12vh auto; padding: 0 1.25rem; }
-      h1 { font-size: 1.5rem; margin: 0 0 1.25rem; }
-      input, button { font: inherit; padding: 0.55rem 0.7rem; border-radius: 8px; border: 1px solid #8884; width: 100%; box-sizing: border-box; }
-      button { cursor: pointer; background: #1118; color: inherit; }
-      button:hover { background: #111c; }
-      .muted { opacity: 0.6; }
-    </style>
+    <title>JobHunt · Admin</title>
+    <style is:global>@media (pointer: fine) { html * { cursor: auto !important; } }</style>
   </head>
-  <body>
-    <main class="wrap">
-      <h1>Admin</h1>
-      {
-        configured ? (
-          <AdminLogin client:load signedIn={signedIn} email={email} />
-        ) : (
-          <p class="muted">Admin is not configured yet. See SETUP-ADMIN.md.</p>
-        )
-      }
+  <body class="flex min-h-screen items-center justify-center bg-bg px-5 text-text antialiased">
+    <main class="w-full max-w-sm">
+      <div class="mb-6 text-center">
+        <div class="font-mono text-sm uppercase tracking-[0.18em]">JobHunt</div>
+        <p class="mt-1.5 text-xs text-text-subtle">Owner access</p>
+      </div>
+      <div class="rounded-2xl border border-border bg-bg-elevated/40 p-6">
+        {
+          configured ? (
+            <AdminLogin client:load signedIn={signedIn} email={email} />
+          ) : (
+            <p class="text-sm text-text-muted">Admin is not configured yet. See SETUP-ADMIN.md.</p>
+          )
+        }
+      </div>
     </main>
   </body>
 </html>

@@ -19,6 +19,16 @@ export type Snapshot = {
     location: string;
     contacts: number;
   }>;
+  matches: Array<{
+    company: string;
+    title: string;
+    score: number;
+    comp: string;
+    url: string;
+    location: string;
+    contacts: number;
+  }>;
+  matches_total: number;
   applications: Array<{
     id: string;
     company: string;

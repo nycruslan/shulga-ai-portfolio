@@ -1,5 +1,7 @@
 ---
 export const prerender = false;
+import '../../styles/global.css';
+import JobTable from '../../components/admin/JobTable.astro';
 import { readSnapshot } from '../../lib/turso';
 
 // Middleware guarantees only the owner reaches this route.
@@ -11,6 +13,16 @@ const pipeline = snap
   ? STATUS_ORDER.filter((s) => snap.pipeline[s]).map((s) => [s, snap.pipeline[s]] as const)
   : [];
 const updated = snap ? new Date(snap.generated_at).toLocaleString() : null;
+
+const funnel = snap?.funnel;
+const statusBadge = (s: string) =>
+  ({
+    applied: 'bg-sky-500/10 text-sky-300 ring-sky-500/20',
+    screen: 'bg-amber-500/10 text-amber-300 ring-amber-500/20',
+    onsite: 'bg-violet-500/10 text-violet-300 ring-violet-500/20',
+    offer: 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/20',
+    rejected: 'bg-rose-500/10 text-rose-300 ring-rose-500/20',
+  })[s] ?? 'bg-white/5 text-text-muted ring-white/10';
 ---
 
 <!doctype html>
@@ -20,105 +32,143 @@ const updated = snap ? new Date(snap.generated_at).toLocaleString() : null;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>JobHunt · Admin</title>
-    <style>
-      :root { color-scheme: light dark; }
-      body { font: 15px/1.5 -apple-system, system-ui, sans-serif; margin: 0; }
-      .wrap { max-width: 60rem; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
-      header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
-      h1 { font-size: 1.4rem; margin: 0; }
-      h2 { font-size: 1rem; margin: 2rem 0 0.6rem; opacity: 0.8; }
-      .muted { opacity: 0.6; font-size: 0.85rem; }
-      .cards { display: flex; gap: 0.6rem; flex-wrap: wrap; }
-      .card { border: 1px solid #8883; border-radius: 10px; padding: 0.6rem 0.9rem; min-width: 5rem; }
-      .card b { font-size: 1.3rem; display: block; }
-      table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-      th, td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid #8882; vertical-align: top; }
-      th { font-weight: 600; opacity: 0.7; }
-      a { color: inherit; }
-      #logout { font: inherit; cursor: pointer; background: none; border: 1px solid #8884; border-radius: 8px; padding: 0.3rem 0.7rem; }
-    </style>
+    <!-- Admin has no custom-cursor island, so restore the native cursor that global.css hides. -->
+    <style is:global>@media (pointer: fine) { html * { cursor: auto !important; } }</style>
   </head>
-  <body>
-    <main class="wrap">
-      <header>
-        <h1>JobHunt</h1>
-        <div class="muted">
-          {user?.email}
-          {updated ? ` · updated ${updated}` : ''}
-          <button id="logout">Sign out</button>
+  <body class="min-h-screen bg-bg text-text antialiased">
+    <header class="sticky top-0 z-20 border-b border-border bg-bg/80 backdrop-blur-md">
+      <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3.5">
+        <div class="flex items-baseline gap-3">
+          <span class="font-mono text-sm font-medium uppercase tracking-[0.18em]">JobHunt</span>
+          {updated && <span class="hidden text-xs text-text-subtle sm:inline">updated {updated}</span>}
         </div>
-      </header>
+        <div class="flex items-center gap-3 text-xs text-text-muted">
+          <span class="hidden sm:inline">{user?.email}</span>
+          <button
+            id="logout"
+            class="rounded-lg border border-border-strong px-3 py-1.5 text-text-muted transition-colors hover:bg-white/[0.04] hover:text-text"
+          >Sign out</button>
+        </div>
+      </div>
+    </header>
 
+    <main class="mx-auto max-w-6xl px-5 pb-24 pt-7">
       {
         !snap ? (
-          <p class="muted" style="margin-top:2rem">
-            No snapshot yet. Run a feed pull on your machine with publishing enabled
-            (<code>preferences.publish: true</code> + Turso creds). See SETUP-ADMIN.md.
+          <p class="mt-8 text-sm text-text-muted">
+            No snapshot yet. Run a feed pull with publishing enabled
+            (<code class="font-mono text-text-subtle">preferences.publish: true</code> + Turso creds).
           </p>
         ) : (
           <>
-            <h2>Funnel</h2>
-            <div class="cards">
-              <div class="card"><b>{snap.funnel.applied_total}</b>applied</div>
-              <div class="card"><b>{snap.funnel.responded}</b>responses</div>
-              <div class="card"><b>{snap.funnel.response_rate}%</b>response rate</div>
-              <div class="card"><b>{snap.funnel.offers}</b>offers</div>
-            </div>
-
-            <h2>Pipeline</h2>
-            <div class="cards">
-              {pipeline.map(([s, n]) => (
-                <div class="card"><b>{n}</b>{s}</div>
+            {/* Funnel KPIs */}
+            <section class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {[
+                ['Applied', funnel?.applied_total ?? 0, ''],
+                ['Responses', funnel?.responded ?? 0, ''],
+                ['Response rate', `${funnel?.response_rate ?? 0}%`, ''],
+                ['Offers', funnel?.offers ?? 0, funnel?.offers ? 'text-emerald-300' : ''],
+              ].map(([label, value, tone]) => (
+                <div class="rounded-xl border border-border bg-bg-elevated/40 p-4">
+                  <div class={'text-2xl font-medium tabular-nums ' + (tone || '')}>{value}</div>
+                  <div class="mt-1 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+                    {label}
+                  </div>
+                </div>
               ))}
-            </div>
+            </section>
 
-            <h2>Today's matches ({snap.today.length})</h2>
+            {/* Pipeline chips */}
+            <section class="mt-4 flex flex-wrap gap-2">
+              {pipeline.map(([s, n]) => (
+                <span class="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg-elevated/40 px-3 py-1 text-xs text-text-muted">
+                  <b class="tabular-nums text-text">{n}</b> {s}
+                </span>
+              ))}
+            </section>
+
+            {/* Today */}
+            <h2 class="mb-2.5 mt-9 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+              Today's matches · {snap.today.length}
+            </h2>
             {snap.today.length === 0 ? (
-              <p class="muted">Nothing new today.</p>
+              <p class="text-sm text-text-muted">Nothing new today.</p>
             ) : (
-              <table>
-                <thead><tr><th>Company</th><th>Role</th><th>Score</th><th>TC</th><th>Loc</th><th></th></tr></thead>
-                <tbody>
-                  {snap.today.map((j) => (
-                    <tr>
-                      <td>{j.company}{j.contacts > 0 ? ` 👥${j.contacts}` : ''}</td>
-                      <td>{j.title}</td>
-                      <td>{j.score}%</td>
-                      <td>{j.comp}</td>
-                      <td>{j.location}</td>
-                      <td>{j.url ? <a href={j.url} target="_blank" rel="noopener">apply →</a> : ''}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <JobTable jobs={snap.today} />
             )}
 
-            <h2>Active applications ({snap.applications.length})</h2>
+            {/* Matches */}
+            <h2 class="mb-2.5 mt-9 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+              Matches · showing {(snap.matches ?? []).length} of {snap.matches_total ?? 0}
+            </h2>
+            {(snap.matches ?? []).length === 0 ? (
+              <p class="text-sm text-text-muted">No matches stored yet.</p>
+            ) : (
+              <JobTable jobs={snap.matches} scroll />
+            )}
+
+            {/* Active applications */}
+            <h2 class="mb-2.5 mt-9 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+              Active applications · {snap.applications.length}
+            </h2>
             {snap.applications.length === 0 ? (
-              <p class="muted">No active applications.</p>
+              <p class="text-sm text-text-muted">No active applications.</p>
             ) : (
-              <table>
-                <thead><tr><th>Company</th><th>Role</th><th>Status</th><th>Applied</th><th></th></tr></thead>
-                <tbody>
-                  {snap.applications.map((a) => (
-                    <tr>
-                      <td>{a.company}</td>
-                      <td>{a.title}</td>
-                      <td>{a.status}</td>
-                      <td>{a.applied_at ? a.applied_at.slice(0, 10) : '—'}</td>
-                      <td>{a.url ? <a href={a.url} target="_blank" rel="noopener">link →</a> : ''}</td>
+              <div class="overflow-x-auto rounded-xl border border-border bg-bg-elevated/40">
+                <table class="w-full border-collapse text-sm">
+                  <thead>
+                    <tr class="text-left font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+                      <th class="px-4 py-2.5 font-medium">Company</th>
+                      <th class="px-4 py-2.5 font-medium">Role</th>
+                      <th class="px-4 py-2.5 font-medium">Status</th>
+                      <th class="px-4 py-2.5 font-medium">Applied</th>
+                      <th class="px-4 py-2.5" />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {snap.applications.map((a) => (
+                      <tr class="border-t border-border/70 transition-colors hover:bg-white/[0.02]">
+                        <td class="whitespace-nowrap px-4 py-2.5">{a.company}</td>
+                        <td class="px-4 py-2.5 text-text-muted">{a.title}</td>
+                        <td class="px-4 py-2.5">
+                          <span class={'inline-flex rounded-full px-2 py-0.5 text-xs ring-1 ring-inset ' + statusBadge(a.status)}>
+                            {a.status}
+                          </span>
+                        </td>
+                        <td class="whitespace-nowrap px-4 py-2.5 font-mono tabular-nums text-text-muted">
+                          {a.applied_at ? a.applied_at.slice(0, 10) : '—'}
+                        </td>
+                        <td class="px-4 py-2.5 text-right">
+                          {a.url && (
+                            <a
+                              href={a.url}
+                              target="_blank"
+                              rel="noopener"
+                              class="whitespace-nowrap text-text-muted underline-offset-4 hover:text-text hover:underline"
+                            >
+                              link →
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
 
+            {/* Follow-ups */}
             {snap.followups.length > 0 && (
               <>
-                <h2>Follow-ups due ({snap.followups.length})</h2>
-                <ul>
+                <h2 class="mb-2.5 mt-9 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+                  Follow-ups due · {snap.followups.length}
+                </h2>
+                <ul class="space-y-1.5 text-sm">
                   {snap.followups.map((f) => (
-                    <li>{f.company} — {f.title} <span class="muted">· applied {f.applied_days_ago}d ago</span></li>
+                    <li class="flex items-baseline justify-between gap-3 rounded-lg border border-border bg-bg-elevated/40 px-4 py-2.5">
+                      <span>{f.company} <span class="text-text-muted">— {f.title}</span></span>
+                      <span class="shrink-0 font-mono text-xs text-text-subtle">{f.applied_days_ago}d ago</span>
+                    </li>
                   ))}
                 </ul>
               </>
