@@ -17,6 +17,16 @@ export default defineConfig({
       // Provision free via the Upstash integration in the Vercel Marketplace.
       UPSTASH_REDIS_REST_URL: envField.string({ context: 'server', access: 'secret', optional: true }),
       UPSTASH_REDIS_REST_TOKEN: envField.string({ context: 'server', access: 'secret', optional: true }),
+
+      // Owner admin (optional). When all are set, /admin unlocks the JobHunt
+      // dashboard. Until then the admin routes report "not configured" and the
+      // rest of the site is unaffected. See SETUP-ADMIN.md.
+      TURSO_DATABASE_URL: envField.string({ context: 'server', access: 'secret', optional: true }),
+      TURSO_AUTH_TOKEN: envField.string({ context: 'server', access: 'secret', optional: true }),
+      BETTER_AUTH_SECRET: envField.string({ context: 'server', access: 'secret', optional: true }),
+      BETTER_AUTH_URL: envField.string({ context: 'server', access: 'secret', optional: true }),
+      OWNER_EMAIL: envField.string({ context: 'server', access: 'secret', optional: true }),
+      ADMIN_ALLOW_SIGNUP: envField.string({ context: 'server', access: 'secret', optional: true }),
     },
   },
   vite: {
