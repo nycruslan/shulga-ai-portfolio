@@ -1,0 +1,50 @@
+import { createClient } from '@libsql/client';
+import { TURSO_DATABASE_URL, TURSO_AUTH_TOKEN } from 'astro:env/server';
+
+export type Snapshot = {
+  generated_at: string;
+  pipeline: Record<string, number>;
+  funnel: {
+    applied_total: number;
+    responded: number;
+    response_rate: number;
+    offers: number;
+  };
+  today: Array<{
+    company: string;
+    title: string;
+    score: number;
+    comp: string;
+    url: string;
+    location: string;
+    contacts: number;
+  }>;
+  applications: Array<{
+    id: string;
+    company: string;
+    title: string;
+    status: string;
+    applied_at: string | null;
+    url: string;
+  }>;
+  followups: Array<{ company: string; title: string; applied_days_ago: number }>;
+};
+
+const client =
+  TURSO_DATABASE_URL && TURSO_AUTH_TOKEN
+    ? createClient({ url: TURSO_DATABASE_URL, authToken: TURSO_AUTH_TOKEN })
+    : null;
+
+// The jobhunt tool writes one JSON row (id=1) to jobhunt_snapshot. We just read it.
+export async function readSnapshot(): Promise<Snapshot | null> {
+  if (!client) return null;
+  try {
+    const rs = await client.execute('SELECT data FROM jobhunt_snapshot WHERE id = 1');
+    const row = rs.rows[0];
+    if (!row || row.data == null) return null;
+    return JSON.parse(String(row.data)) as Snapshot;
+  } catch (err) {
+    console.error('[turso] readSnapshot failed:', err);
+    return null;
+  }
+}

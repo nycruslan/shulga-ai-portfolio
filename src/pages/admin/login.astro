@@ -1,0 +1,41 @@
+---
+export const prerender = false;
+import AdminLogin from '../../components/islands/AdminLogin.tsx';
+import { auth } from '../../lib/auth';
+
+// Already signed in? Go to the dashboard.
+if (auth && Astro.locals.user) return Astro.redirect('/admin');
+const configured = Boolean(auth);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Admin · Sign in</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { font: 15px/1.5 -apple-system, system-ui, sans-serif; margin: 0; }
+      .wrap { max-width: 22rem; margin: 12vh auto; padding: 0 1.25rem; }
+      h1 { font-size: 1.5rem; margin: 0 0 1.25rem; }
+      input, button { font: inherit; padding: 0.55rem 0.7rem; border-radius: 8px; border: 1px solid #8884; width: 100%; box-sizing: border-box; }
+      button { cursor: pointer; background: #1118; color: inherit; }
+      button:hover { background: #111c; }
+      .muted { opacity: 0.6; }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Admin</h1>
+      {
+        configured ? (
+          <AdminLogin client:load />
+        ) : (
+          <p class="muted">Admin is not configured yet. See SETUP-ADMIN.md.</p>
+        )
+      }
+    </main>
+  </body>
+</html>

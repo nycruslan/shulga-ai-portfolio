@@ -1,0 +1,138 @@
+---
+export const prerender = false;
+import { readSnapshot } from '../../lib/turso';
+
+// Middleware guarantees only the owner reaches this route.
+const user = Astro.locals.user;
+const snap = await readSnapshot();
+
+const STATUS_ORDER = ['new', 'reviewed', 'drafted', 'applied', 'screen', 'onsite', 'offer', 'rejected'];
+const pipeline = snap
+  ? STATUS_ORDER.filter((s) => snap.pipeline[s]).map((s) => [s, snap.pipeline[s]] as const)
+  : [];
+const updated = snap ? new Date(snap.generated_at).toLocaleString() : null;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>JobHunt · Admin</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { font: 15px/1.5 -apple-system, system-ui, sans-serif; margin: 0; }
+      .wrap { max-width: 60rem; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+      header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+      h1 { font-size: 1.4rem; margin: 0; }
+      h2 { font-size: 1rem; margin: 2rem 0 0.6rem; opacity: 0.8; }
+      .muted { opacity: 0.6; font-size: 0.85rem; }
+      .cards { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+      .card { border: 1px solid #8883; border-radius: 10px; padding: 0.6rem 0.9rem; min-width: 5rem; }
+      .card b { font-size: 1.3rem; display: block; }
+      table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+      th, td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid #8882; vertical-align: top; }
+      th { font-weight: 600; opacity: 0.7; }
+      a { color: inherit; }
+      #logout { font: inherit; cursor: pointer; background: none; border: 1px solid #8884; border-radius: 8px; padding: 0.3rem 0.7rem; }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <header>
+        <h1>JobHunt</h1>
+        <div class="muted">
+          {user?.email}
+          {updated ? ` · updated ${updated}` : ''}
+          <button id="logout">Sign out</button>
+        </div>
+      </header>
+
+      {
+        !snap ? (
+          <p class="muted" style="margin-top:2rem">
+            No snapshot yet. Run a feed pull on your machine with publishing enabled
+            (<code>preferences.publish: true</code> + Turso creds). See SETUP-ADMIN.md.
+          </p>
+        ) : (
+          <>
+            <h2>Funnel</h2>
+            <div class="cards">
+              <div class="card"><b>{snap.funnel.applied_total}</b>applied</div>
+              <div class="card"><b>{snap.funnel.responded}</b>responses</div>
+              <div class="card"><b>{snap.funnel.response_rate}%</b>response rate</div>
+              <div class="card"><b>{snap.funnel.offers}</b>offers</div>
+            </div>
+
+            <h2>Pipeline</h2>
+            <div class="cards">
+              {pipeline.map(([s, n]) => (
+                <div class="card"><b>{n}</b>{s}</div>
+              ))}
+            </div>
+
+            <h2>Today's matches ({snap.today.length})</h2>
+            {snap.today.length === 0 ? (
+              <p class="muted">Nothing new today.</p>
+            ) : (
+              <table>
+                <thead><tr><th>Company</th><th>Role</th><th>Score</th><th>TC</th><th>Loc</th><th></th></tr></thead>
+                <tbody>
+                  {snap.today.map((j) => (
+                    <tr>
+                      <td>{j.company}{j.contacts > 0 ? ` 👥${j.contacts}` : ''}</td>
+                      <td>{j.title}</td>
+                      <td>{j.score}%</td>
+                      <td>{j.comp}</td>
+                      <td>{j.location}</td>
+                      <td>{j.url ? <a href={j.url} target="_blank" rel="noopener">apply →</a> : ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            <h2>Active applications ({snap.applications.length})</h2>
+            {snap.applications.length === 0 ? (
+              <p class="muted">No active applications.</p>
+            ) : (
+              <table>
+                <thead><tr><th>Company</th><th>Role</th><th>Status</th><th>Applied</th><th></th></tr></thead>
+                <tbody>
+                  {snap.applications.map((a) => (
+                    <tr>
+                      <td>{a.company}</td>
+                      <td>{a.title}</td>
+                      <td>{a.status}</td>
+                      <td>{a.applied_at ? a.applied_at.slice(0, 10) : '—'}</td>
+                      <td>{a.url ? <a href={a.url} target="_blank" rel="noopener">link →</a> : ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {snap.followups.length > 0 && (
+              <>
+                <h2>Follow-ups due ({snap.followups.length})</h2>
+                <ul>
+                  {snap.followups.map((f) => (
+                    <li>{f.company} — {f.title} <span class="muted">· applied {f.applied_days_ago}d ago</span></li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </>
+        )
+      }
+    </main>
+
+    <script>
+      document.getElementById('logout')?.addEventListener('click', async () => {
+        await fetch('/api/auth/sign-out', { method: 'POST' });
+        location.href = '/admin/login';
+      });
+    </script>
+  </body>
+</html>
