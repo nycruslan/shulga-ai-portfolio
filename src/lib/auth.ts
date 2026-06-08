@@ -1,14 +1,18 @@
 import { betterAuth } from 'better-auth';
 import { passkey } from '@better-auth/passkey';
 import { LibsqlDialect } from '@libsql/kysely-libsql';
-import {
+
+// Read from process.env (not astro:env) so the Better Auth CLI — `npx
+// @better-auth/cli migrate`, plain Node — can load this file too. On Vercel these
+// are populated at runtime exactly the same.
+const {
   TURSO_DATABASE_URL,
   TURSO_AUTH_TOKEN,
   BETTER_AUTH_SECRET,
   BETTER_AUTH_URL,
   OWNER_EMAIL,
   ADMIN_ALLOW_SIGNUP,
-} from 'astro:env/server';
+} = process.env;
 
 // The single allowed account. Middleware also enforces this on /admin.
 export const OWNER = OWNER_EMAIL ?? null;
