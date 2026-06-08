@@ -11,6 +11,7 @@ export type Snapshot = {
     offers: number;
   };
   today: Array<{
+    id: string;
     company: string;
     title: string;
     score: number;
@@ -20,6 +21,7 @@ export type Snapshot = {
     contacts: number;
   }>;
   matches: Array<{
+    id: string;
     company: string;
     title: string;
     score: number;

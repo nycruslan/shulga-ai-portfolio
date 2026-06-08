@@ -33,7 +33,13 @@ const statusBadge = (s: string) =>
     <meta name="robots" content="noindex, nofollow" />
     <title>JobHunt · Admin</title>
     <!-- Admin has no custom-cursor island, so restore the native cursor that global.css hides. -->
-    <style is:global>@media (pointer: fine) { html * { cursor: auto !important; } }</style>
+    <style is:global>
+      @media (pointer: fine) { html * { cursor: auto !important; } }
+      th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
+      th[data-sort]::after { content: '↕'; margin-left: 0.35em; font-size: 0.85em; opacity: 0.3; }
+      th[data-sort][aria-sort='ascending']::after { content: '↑'; opacity: 0.9; }
+      th[data-sort][aria-sort='descending']::after { content: '↓'; opacity: 0.9; }
+    </style>
   </head>
   <body class="min-h-screen bg-bg text-text antialiased">
     <header class="sticky top-0 z-20 border-b border-border bg-bg/80 backdrop-blur-md">
@@ -115,13 +121,14 @@ const statusBadge = (s: string) =>
               <p class="text-sm text-text-muted">No active applications.</p>
             ) : (
               <div class="overflow-x-auto rounded-xl border border-border bg-bg-elevated/40">
-                <table class="w-full border-collapse text-sm">
+                <table class="w-full border-collapse text-sm" data-sortable>
                   <thead>
                     <tr class="text-left font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-                      <th class="px-4 py-2.5 font-medium">Company</th>
-                      <th class="px-4 py-2.5 font-medium">Role</th>
-                      <th class="px-4 py-2.5 font-medium">Status</th>
-                      <th class="px-4 py-2.5 font-medium">Applied</th>
+                      <th data-sort="text" class="px-4 py-2.5 font-medium">Company</th>
+                      <th data-sort="text" class="px-4 py-2.5 font-medium">Role</th>
+                      <th data-sort="text" class="px-4 py-2.5 font-medium">Status</th>
+                      <th data-sort="text" class="px-4 py-2.5 font-medium">Applied</th>
+                      <th data-sort="text" class="px-4 py-2.5 font-medium">ID</th>
                       <th class="px-4 py-2.5" />
                     </tr>
                   </thead>
@@ -137,6 +144,16 @@ const statusBadge = (s: string) =>
                         </td>
                         <td class="whitespace-nowrap px-4 py-2.5 font-mono tabular-nums text-text-muted">
                           {a.applied_at ? a.applied_at.slice(0, 10) : '—'}
+                        </td>
+                        <td class="px-4 py-2.5">
+                          <button
+                            type="button"
+                            data-copy={a.id}
+                            title="Copy job id"
+                            class="font-mono text-xs text-text-subtle transition-colors hover:text-text"
+                          >
+                            {a.id}
+                          </button>
                         </td>
                         <td class="px-4 py-2.5 text-right">
                           {a.url && (
@@ -178,11 +195,61 @@ const statusBadge = (s: string) =>
       }
     </main>
 
-    <script>
+    <script is:inline>
       document.getElementById('logout')?.addEventListener('click', async () => {
         await fetch('/api/auth/sign-out', { method: 'POST' });
         location.href = '/admin/login';
       });
+
+      // Click a job id to copy it, then paste into /jobhunt-draft in Claude.
+      document.addEventListener('click', async (e) => {
+        const el = e.target;
+        const btn = el && el.closest ? el.closest('[data-copy]') : null;
+        if (!btn) return;
+        try {
+          await navigator.clipboard.writeText(btn.getAttribute('data-copy') || '');
+          const prev = btn.textContent;
+          btn.textContent = 'copied ✓';
+          setTimeout(() => { btn.textContent = prev; }, 1200);
+        } catch (_) {}
+      });
+
+      // Click a column header to sort (accessible: role=button, aria-sort, keyboard).
+      function initSort(table) {
+        const head = table.tHead && table.tHead.rows[0];
+        const body = table.tBodies[0];
+        if (!head || !body) return;
+        Array.prototype.forEach.call(head.cells, (th) => {
+          const type = th.getAttribute('data-sort');
+          if (!type) return;
+          th.setAttribute('role', 'button');
+          th.tabIndex = 0;
+          const idx = th.cellIndex;
+          const num = (s) => {
+            const m = s.match(/-?\d[\d,]*\.?\d*/);
+            const n = m ? parseFloat(m[0].replace(/,/g, '')) : NaN;
+            return isNaN(n) ? -Infinity : n;
+          };
+          const sort = () => {
+            const asc = th.getAttribute('aria-sort') !== 'ascending';
+            Array.prototype.forEach.call(head.cells, (h) => h.removeAttribute('aria-sort'));
+            th.setAttribute('aria-sort', asc ? 'ascending' : 'descending');
+            const rows = Array.prototype.slice.call(body.rows);
+            rows.sort((a, b) => {
+              const x = (a.cells[idx] ? a.cells[idx].innerText : '').trim();
+              const y = (b.cells[idx] ? b.cells[idx].innerText : '').trim();
+              if (type === 'num') return asc ? num(x) - num(y) : num(y) - num(x);
+              return asc ? x.localeCompare(y) : y.localeCompare(x);
+            });
+            rows.forEach((r) => body.appendChild(r));
+          };
+          th.addEventListener('click', sort);
+          th.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sort(); }
+          });
+        });
+      }
+      document.querySelectorAll('table[data-sortable]').forEach(initSort);
     </script>
   </body>
 </html>

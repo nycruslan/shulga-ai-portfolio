@@ -1,5 +1,6 @@
 ---
 interface Job {
+  id: string;
   company: string;
   title: string;
   score: number;
@@ -19,14 +20,15 @@ const tone = (n: number) =>
     scroll && 'max-h-[28rem] overflow-y-auto themed-scroll',
   ]}
 >
-  <table class="w-full border-collapse text-sm">
+  <table class="w-full border-collapse text-sm" data-sortable>
     <thead class="sticky top-0 z-10 bg-bg-elevated/90 backdrop-blur">
       <tr class="text-left font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-        <th class="px-4 py-2.5 font-medium">Company</th>
-        <th class="px-4 py-2.5 font-medium">Role</th>
-        <th class="px-4 py-2.5 font-medium">Score</th>
-        <th class="px-4 py-2.5 font-medium">TC</th>
-        <th class="px-4 py-2.5 font-medium">Location</th>
+        <th data-sort="text" class="px-4 py-2.5 font-medium">Company</th>
+        <th data-sort="text" class="px-4 py-2.5 font-medium">Role</th>
+        <th data-sort="num" class="px-4 py-2.5 font-medium">Score</th>
+        <th data-sort="num" class="px-4 py-2.5 font-medium">TC</th>
+        <th data-sort="text" class="px-4 py-2.5 font-medium">Location</th>
+        <th data-sort="text" class="px-4 py-2.5 font-medium">ID</th>
         <th class="px-4 py-2.5"></th>
       </tr>
     </thead>
@@ -46,6 +48,16 @@ const tone = (n: number) =>
               {j.comp || '—'}
             </td>
             <td class="whitespace-nowrap px-4 py-2.5 text-text-muted">{j.location || '—'}</td>
+            <td class="px-4 py-2.5">
+              <button
+                type="button"
+                data-copy={j.id}
+                title="Copy job id"
+                class="font-mono text-xs text-text-subtle transition-colors hover:text-text"
+              >
+                {j.id}
+              </button>
+            </td>
             <td class="px-4 py-2.5 text-right">
               {j.url && (
                 <a
