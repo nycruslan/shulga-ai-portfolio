@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import {
   flexRender,
   getCoreRowModel,
@@ -88,6 +88,10 @@ function ExternalLink({ url, label }: { url: string; label: string }) {
   );
 }
 
+// Visually-hidden header label so the action column still has an accessible
+// header (axe: td-has-header) without showing a column title.
+const srHeader = (text: string) => () => <span className="sr-only">{text}</span>;
+
 const alignClass = (a?: Align) => (a === 'right' ? 'text-right' : '');
 
 function DataTable<T>({
@@ -102,6 +106,7 @@ function DataTable<T>({
   const [sorting, setSorting] = useState<SortingState>([]);
   const [filter, setFilter] = useState('');
   const searchable = data.length > 6;
+  const filterId = useId();
 
   const table = useReactTable({
     data,
@@ -122,6 +127,8 @@ function DataTable<T>({
       {searchable && (
         <div className="mb-2.5 flex items-center justify-between gap-3">
           <input
+            id={filterId}
+            name="filter"
             type="search"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
@@ -157,6 +164,7 @@ function DataTable<T>({
                   return (
                     <th
                       key={header.id}
+                      scope="col"
                       aria-sort={
                         sorted === 'asc'
                           ? 'ascending'
@@ -271,7 +279,7 @@ const jobColumns: ColumnDef<Job, any>[] = [
   },
   {
     id: 'action',
-    header: '',
+    header: srHeader('Apply link'),
     enableSorting: false,
     meta: { align: 'right' },
     cell: ({ row }) => <ExternalLink url={row.original.url} label="apply" />,
@@ -309,7 +317,7 @@ const appColumns: ColumnDef<Application, any>[] = [
   },
   {
     id: 'action',
-    header: '',
+    header: srHeader('Listing link'),
     enableSorting: false,
     meta: { align: 'right' },
     cell: ({ row }) => <ExternalLink url={row.original.url} label="link" />,

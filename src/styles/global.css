@@ -12,7 +12,7 @@
   --color-border-strong: #2a2d30;
   --color-text: #e6e7e8;
   --color-text-muted: #8a8f98;
-  --color-text-subtle: #5e6469;
+  --color-text-subtle: #787f86; /* 4.8:1 on --color-bg — WCAG AA for small text */
 }
 
 html {

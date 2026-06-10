@@ -299,7 +299,7 @@ export default function AskMe() {
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: '#e6e7e8' }}>
               Ask my portfolio
             </span>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#5e6469' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#787f86' }}>
               · powered by Claude Haiku
             </span>
           </div>
@@ -336,7 +336,7 @@ export default function AskMe() {
                   fontSize: 10,
                   textTransform: 'uppercase',
                   letterSpacing: '0.08em',
-                  color: '#5e6469',
+                  color: '#787f86',
                   marginBottom: 4,
                 }}
               >

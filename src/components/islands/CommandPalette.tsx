@@ -205,7 +205,7 @@ export default function CommandPalette() {
         />
         <ul className="themed-scroll" style={{ listStyle: 'none', margin: 0, padding: 6, maxHeight: '50vh', overflow: 'auto' }}>
           {filtered.length === 0 && (
-            <li style={{ padding: '14px 12px', color: '#5e6469', fontSize: 13 }}>No matches.</li>
+            <li style={{ padding: '14px 12px', color: '#787f86', fontSize: 13 }}>No matches.</li>
           )}
           {filtered.map((a, i) => (
             <li
@@ -228,7 +228,7 @@ export default function CommandPalette() {
               }}
             >
               <span>{a.title}</span>
-              {a.hint && <span style={{ color: '#5e6469', fontSize: 11 }}>{a.hint}</span>}
+              {a.hint && <span style={{ color: '#787f86', fontSize: 11 }}>{a.hint}</span>}
             </li>
           ))}
         </ul>
@@ -239,7 +239,7 @@ export default function CommandPalette() {
             padding: '8px 14px',
             borderTop: '1px solid #1a1d1f',
             fontSize: 10,
-            color: '#5e6469',
+            color: '#787f86',
           }}
         >
           <span>↑ ↓ navigate</span>
