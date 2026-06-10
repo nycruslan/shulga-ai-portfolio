@@ -5,7 +5,6 @@ import { about } from '../data/about';
 const shortUrl = (url: string) => url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
 
 const links = [
-  { label: 'Email', href: `mailto:${about.email}`, value: about.email },
   { label: 'LinkedIn', href: about.linkedin, value: shortUrl(about.linkedin) },
   { label: 'GitHub', href: about.github, value: shortUrl(about.github) },
   { label: 'Location', href: null, value: about.location },
@@ -34,34 +33,75 @@ const links = [
       Working on something interesting? Let's talk.
     </h2>
 
-    <dl class="space-y-5">
-      {
-        links.map((link) => (
-          <div class="flex items-baseline gap-6">
-            <dt
-              class="w-20 font-mono text-xs uppercase tracking-wider"
-              style="color: var(--color-text-subtle);"
-            >
-              {link.label}
-            </dt>
-            <dd class="font-mono text-sm" style="color: var(--color-text);">
-              {link.href ? (
-                <a
-                  href={link.href}
-                  class="transition-colors hover:[color:var(--color-text-muted)]"
-                >
-                  {link.value} ↗
-                </a>
-              ) : (
-                link.value
-              )}
-            </dd>
-          </div>
-        ))
-      }
-    </dl>
+    <div>
+      <!-- The email is the moment: display type, copies on click. -->
+      <div class="flex flex-wrap items-baseline gap-x-5 gap-y-2">
+        <a
+          href={`mailto:${about.email}`}
+          class="font-display text-2xl font-medium underline decoration-1 underline-offset-8 transition-colors sm:text-3xl md:text-4xl hover:[text-decoration-color:var(--color-accent)]"
+          style="color: var(--color-text); letter-spacing: -0.015em; text-decoration-color: var(--color-border-strong);"
+        >
+          {about.email}
+        </a>
+        <button
+          type="button"
+          data-copy-email={about.email}
+          class="font-mono text-xs transition-colors hover:[color:var(--color-text)]"
+          style="color: var(--color-text-subtle);"
+        >
+          copy
+        </button>
+      </div>
+
+      <dl class="mt-10 space-y-5">
+        {
+          links.map((link) => (
+            <div class="flex items-baseline gap-6">
+              <dt
+                class="w-20 font-mono text-xs uppercase tracking-wider"
+                style="color: var(--color-text-subtle);"
+              >
+                {link.label}
+              </dt>
+              <dd class="font-mono text-sm" style="color: var(--color-text);">
+                {link.href ? (
+                  <a
+                    href={link.href}
+                    class="transition-colors hover:[color:var(--color-text-muted)]"
+                  >
+                    {link.value} ↗
+                  </a>
+                ) : (
+                  link.value
+                )}
+              </dd>
+            </div>
+          ))
+        }
+      </dl>
+    </div>
   </div>
 </section>
+
+<script>
+  // Click-to-copy email with a "copied ✓" state.
+  document.addEventListener('click', async (e) => {
+    const btn = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-copy-email]');
+    if (!btn) return;
+    try {
+      await navigator.clipboard.writeText(btn.dataset.copyEmail || '');
+      const prev = btn.textContent;
+      btn.textContent = 'copied ✓';
+      btn.style.color = 'var(--color-accent)';
+      setTimeout(() => {
+        btn.textContent = prev;
+        btn.style.color = '';
+      }, 1500);
+    } catch {
+      /* clipboard blocked — the mailto link still works */
+    }
+  });
+</script>
 
 <footer
   class="mx-auto max-w-5xl px-6 py-8 font-mono text-xs"

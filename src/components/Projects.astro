@@ -18,19 +18,20 @@ const projects = all.sort((a, b) => a.data.order - b.data.order);
     Selected Work
   </p>
 
-  <ol class="space-y-px" id="work-list">
+  <ol class="space-y-px" id="work-list" data-spotlight-list>
     {
       projects.map((project, i) => (
         <li
-          class="group block py-8 transition-colors"
+          class="group block py-9 transition-colors"
           style="border-top: 1px solid var(--color-border);"
           data-project-card
+          data-spotlight
           data-shape={project.data.shape}
         >
           <a href={`/work/${project.id}`} class="block">
             <article class="grid gap-6 md:grid-cols-[80px_1fr]">
               <span
-                class="font-mono text-sm pt-1"
+                class="font-mono text-sm pt-2 transition-colors group-hover:[color:var(--color-accent)]"
                 style="color: var(--color-text-subtle);"
                 transition:name={`work-num-${project.id}`}
               >
@@ -39,8 +40,8 @@ const projects = all.sort((a, b) => a.data.order - b.data.order);
 
               <div>
                 <h3
-                  class="font-display text-xl font-medium md:text-2xl group-hover:[color:var(--color-text-muted)] transition-colors"
-                  style="color: var(--color-text); letter-spacing: -0.01em;"
+                  class="font-display text-2xl font-medium md:text-[2rem] md:leading-tight group-hover:[color:var(--color-text-muted)] transition-colors"
+                  style="color: var(--color-text); letter-spacing: -0.015em;"
                   transition:name={`work-title-${project.id}`}
                 >
                   {project.data.title}
@@ -62,7 +63,7 @@ const projects = all.sort((a, b) => a.data.order - b.data.order);
                 </div>
 
                 {project.data.metrics.length > 0 && (
-                  <dl class="mt-6 flex flex-wrap gap-x-10 gap-y-3 text-sm" data-metrics>
+                  <dl class="mt-7 flex flex-wrap items-end gap-x-12 gap-y-4" data-metrics>
                     {project.data.metrics.map((m) => (
                       <div>
                         <dt
@@ -71,9 +72,14 @@ const projects = all.sort((a, b) => a.data.order - b.data.order);
                         >
                           {m.label}
                         </dt>
+                        {/* Big numerals only earn the display scale; prose values stay quiet. */}
                         <dd
-                          class="mt-1 font-mono"
-                          style="color: var(--color-text);"
+                          class={
+                            m.value.length <= 12
+                              ? 'mt-1.5 font-mono text-2xl tabular-nums md:text-3xl'
+                              : 'mt-1.5 font-mono text-base tabular-nums'
+                          }
+                          style="color: var(--color-text); letter-spacing: -0.01em;"
                           data-metric-value={m.value}
                         >
                           {m.value}
@@ -113,9 +119,23 @@ const projects = all.sort((a, b) => a.data.order - b.data.order);
     lenisSynced = true;
   }
 
+  // Feed the CSS spotlight (--mx/--my) with the pointer position per row.
+  function initSpotlight() {
+    if (!window.matchMedia('(hover: hover)').matches) return;
+    document.querySelectorAll<HTMLElement>('[data-spotlight]').forEach((row) => {
+      row.addEventListener('mousemove', (e) => {
+        const rect = row.getBoundingClientRect();
+        row.style.setProperty('--mx', `${e.clientX - rect.left}px`);
+        row.style.setProperty('--my', `${e.clientY - rect.top}px`);
+      }, { passive: true });
+    });
+  }
+
   function init() {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-project-card]'));
+
+    initSpotlight();
 
     if (reduced) {
       cards.forEach((el) => el.classList.add('is-in'));

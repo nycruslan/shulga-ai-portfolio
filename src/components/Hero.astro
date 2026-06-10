@@ -1,14 +1,18 @@
 ---
 import HeroShader from './islands/HeroShader';
+
+// Stamped at build time = last deploy. A living-document signal for recruiters.
+const updated = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 ---
 
-<section id="top" class="relative mx-auto max-w-5xl px-6 pt-32 pb-24 md:pt-48 md:pb-32 overflow-visible">
+<section id="top" class="relative mx-auto max-w-5xl px-6 pt-32 pb-24 md:pt-44 md:pb-32 overflow-visible">
   <div class="absolute inset-x-0 -top-20 -bottom-20 -z-10 pointer-events-none">
     <HeroShader client:only="react" />
   </div>
 
-  <!-- Depth scrim: darkens behind the headline so type stays legible over the
-       shader at any viewport, and adds focus. Above the shader, below the text. -->
+  <!-- Atmosphere: one phosphor-tinted light source from the top, then a depth
+       scrim so type stays legible over the shader. Above shader, below text. -->
+  <div class="hero-glow absolute inset-x-0 -top-20 -bottom-20 -z-[6] pointer-events-none"></div>
   <div
     class="absolute inset-0 -z-[5] pointer-events-none"
     style="background: radial-gradient(ellipse 75% 60% at 28% 42%, color-mix(in srgb, var(--color-bg) 78%, transparent) 0%, transparent 70%);"
@@ -16,16 +20,23 @@ import HeroShader from './islands/HeroShader';
   </div>
 
   <p
-    class="mb-6 font-mono text-xs tracking-widest uppercase"
+    class="mb-7 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-xs tracking-widest uppercase"
     style="color: var(--color-text-subtle);"
     data-hero-reveal="0"
   >
-    Ruslan Shulga
+    <span>Ruslan Shulga</span>
+    <span
+      class="inline-flex items-center gap-2 rounded-full px-3 py-1 normal-case tracking-wider"
+      style="border: 1px solid var(--color-border); color: var(--color-text-muted);"
+    >
+      <span class="live-dot inline-block size-1.5 rounded-full" style="background: var(--color-accent);"></span>
+      Open to senior/staff AI roles
+    </span>
   </p>
 
   <h1
-    class="font-display text-4xl font-medium tracking-tight md:text-6xl md:leading-[1.05]"
-    style="color: var(--color-text); letter-spacing: -0.02em;"
+    class="font-display font-medium tracking-tight text-[clamp(2.75rem,7.5vw,6.5rem)] leading-[1.04]"
+    style="color: var(--color-text); letter-spacing: -0.022em;"
     transition:name="hero-title"
     data-hero-title
   >
@@ -35,8 +46,13 @@ import HeroShader from './islands/HeroShader';
       ))}
     </span>
     <span class="block" data-line>
-      {['platforms','for','the','enterprise.'].map((w, i) => (
+      {['platforms','for'].map((w, i) => (
         <span class="word-mask"><span class="word" data-word style={`--word-delay: ${1.8 + (i + 4) * 0.05}s`}>{w}</span></span>
+      ))}
+    </span>
+    <span class="block" data-line>
+      {['the','enterprise.'].map((w, i) => (
+        <span class="word-mask"><span class="word" data-word style={`--word-delay: ${1.8 + (i + 6) * 0.05}s`}>{w}</span></span>
       ))}
     </span>
   </h1>
@@ -51,37 +67,40 @@ import HeroShader from './islands/HeroShader';
     MCP servers.
   </p>
 
-  <div class="mt-12 flex flex-wrap gap-3 text-sm font-mono" data-hero-reveal="3">
+  <div class="mt-12 flex flex-wrap items-center gap-3 text-sm font-mono" data-hero-reveal="3">
+    <!-- Primary: filled. One unmistakable action per view. -->
     <a
       href="#work"
-      class="magnetic px-4 py-2 transition-colors"
+      class="magnetic px-5 py-2.5 font-medium transition-colors"
       data-magnetic
-      style="border: 1px solid var(--color-border-strong); color: var(--color-text);"
+      style="background: var(--color-text); color: var(--color-bg);"
     >
       View work →
     </a>
+    <!-- Secondary: the differentiator — the AI chat gets the live dot. -->
+    <button
+      type="button"
+      class="magnetic px-4 py-2.5 transition-colors"
+      data-magnetic
+      data-open-chat
+      style="border: 1px solid var(--color-border-strong); color: var(--color-text);"
+    >
+      <span class="inline-block size-1.5 rounded-full mr-2 align-middle" style="background: var(--color-accent); box-shadow: 0 0 8px var(--color-accent);"></span>
+      Ask my portfolio
+    </button>
+    <!-- Tertiary: plain text. -->
     <a
       href="#contact"
-      class="magnetic px-4 py-2 transition-colors"
+      class="magnetic px-3 py-2.5 transition-colors"
       data-magnetic
       style="color: var(--color-text-muted);"
     >
       Get in touch
     </a>
-    <button
-      type="button"
-      class="magnetic px-4 py-2 transition-colors"
-      data-magnetic
-      data-open-chat
-      style="border: 1px solid var(--color-border); color: var(--color-text-muted);"
-    >
-      <span class="inline-block size-1.5 rounded-full mr-2 align-middle" style="background: var(--color-text);"></span>
-      Ask my portfolio
-    </button>
   </div>
 
-  <p class="mt-10 hidden font-mono text-xs md:block" style="color: var(--color-text-subtle);">
-    Press <kbd class="px-1.5 py-0.5 rounded border" style="border-color: var(--color-border); color: var(--color-text-muted);">⌘ K</kbd> for commands
+  <p class="mt-10 font-mono text-xs" style="color: var(--color-text-subtle);" data-hero-reveal="4">
+    Updated {updated}<span class="hidden md:inline"> · Press <kbd class="px-1.5 py-0.5 rounded border" style="border-color: var(--color-border); color: var(--color-text-muted);">⌘ K</kbd> for commands</span>
   </p>
 </section>
 
