@@ -59,7 +59,7 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     return json({ error: 'Invalid message list' }, 400);
   }
 
-  const stream = await client.messages.stream({
+  const stream = client.messages.stream({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 500,
     system: systemPrompt,
@@ -90,7 +90,6 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   return new Response(readable, {
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
-      'Transfer-Encoding': 'chunked',
       'Cache-Control': 'no-cache',
       'X-Content-Type-Options': 'nosniff',
     },

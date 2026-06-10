@@ -186,7 +186,7 @@ export default function AskMe() {
     }
   }, [messages, generating, msgCount]);
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = (e: React.SyntheticEvent) => {
     e.preventDefault();
     if (generating) {
       abortRef.current?.abort();
@@ -385,7 +385,7 @@ export default function AskMe() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
-                  onSubmit(e as any);
+                  onSubmit(e);
                 }
               }}
               placeholder="Ask anything about my work…"

@@ -3,7 +3,11 @@ import { auth, OWNER } from './lib/auth';
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const path = context.url.pathname;
-  const guarded = path.startsWith('/admin') && path !== '/admin/login';
+
+  // Only /admin needs a session. Skipping everything else keeps the Turso
+  // lookup off the public site (no headers access during prerender, no DB
+  // round-trip on /api/chat) since those routes never read locals.user.
+  if (!path.startsWith('/admin')) return next();
 
   if (auth) {
     const session = await auth.api.getSession({ headers: context.request.headers });
@@ -13,7 +17,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
 
-  if (guarded) {
+  if (path !== '/admin/login') {
     const email = context.locals.user?.email;
     if (!auth || !email || (OWNER && email !== OWNER)) {
       return context.redirect('/admin/login');
