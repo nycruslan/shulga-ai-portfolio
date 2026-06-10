@@ -1,7 +1,7 @@
 ---
 export const prerender = false;
 import '../../styles/global.css';
-import JobTable from '../../components/admin/JobTable.astro';
+import AdminTables from '../../components/admin/AdminTables.tsx';
 import { readSnapshot } from '../../lib/turso';
 
 // Middleware guarantees only the owner reaches this route.
@@ -15,14 +15,6 @@ const pipeline = snap
 const updated = snap ? new Date(snap.generated_at).toLocaleString() : null;
 
 const funnel = snap?.funnel;
-const statusBadge = (s: string) =>
-  ({
-    applied: 'bg-sky-500/10 text-sky-300 ring-sky-500/20',
-    screen: 'bg-amber-500/10 text-amber-300 ring-amber-500/20',
-    onsite: 'bg-violet-500/10 text-violet-300 ring-violet-500/20',
-    offer: 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/20',
-    rejected: 'bg-rose-500/10 text-rose-300 ring-rose-500/20',
-  })[s] ?? 'bg-white/5 text-text-muted ring-white/10';
 ---
 
 <!doctype html>
@@ -35,10 +27,6 @@ const statusBadge = (s: string) =>
     <!-- Admin has no custom-cursor island, so restore the native cursor that global.css hides. -->
     <style is:global>
       @media (pointer: fine) { html * { cursor: auto !important; } }
-      th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
-      th[data-sort]::after { content: '↕'; margin-left: 0.35em; font-size: 0.85em; opacity: 0.3; }
-      th[data-sort][aria-sort='ascending']::after { content: '↑'; opacity: 0.9; }
-      th[data-sort][aria-sort='descending']::after { content: '↓'; opacity: 0.9; }
     </style>
   </head>
   <body class="min-h-screen bg-bg text-text antialiased">
@@ -93,86 +81,14 @@ const statusBadge = (s: string) =>
               ))}
             </section>
 
-            {/* Today */}
-            <h2 class="mb-2.5 mt-9 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-              Today's matches · {snap.today.length}
-            </h2>
-            {snap.today.length === 0 ? (
-              <p class="text-sm text-text-muted">Nothing new today.</p>
-            ) : (
-              <JobTable jobs={snap.today} />
-            )}
-
-            {/* Matches */}
-            <h2 class="mb-2.5 mt-9 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-              Matches · showing {(snap.matches ?? []).length} of {snap.matches_total ?? 0}
-            </h2>
-            {(snap.matches ?? []).length === 0 ? (
-              <p class="text-sm text-text-muted">No matches stored yet.</p>
-            ) : (
-              <JobTable jobs={snap.matches} scroll />
-            )}
-
-            {/* Active applications */}
-            <h2 class="mb-2.5 mt-9 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-              Active applications · {snap.applications.length}
-            </h2>
-            {snap.applications.length === 0 ? (
-              <p class="text-sm text-text-muted">No active applications.</p>
-            ) : (
-              <div class="overflow-x-auto rounded-xl border border-border bg-bg-elevated/40">
-                <table class="w-full border-collapse text-sm" data-sortable>
-                  <thead>
-                    <tr class="text-left font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-                      <th data-sort="text" class="px-4 py-2.5 font-medium">Company</th>
-                      <th data-sort="text" class="px-4 py-2.5 font-medium">Role</th>
-                      <th data-sort="text" class="px-4 py-2.5 font-medium">Status</th>
-                      <th data-sort="text" class="px-4 py-2.5 font-medium">Applied</th>
-                      <th data-sort="text" class="px-4 py-2.5 font-medium">ID</th>
-                      <th class="px-4 py-2.5" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {snap.applications.map((a) => (
-                      <tr class="border-t border-border/70 transition-colors hover:bg-white/[0.02]">
-                        <td class="whitespace-nowrap px-4 py-2.5">{a.company}</td>
-                        <td class="px-4 py-2.5 text-text-muted">{a.title}</td>
-                        <td class="px-4 py-2.5">
-                          <span class={'inline-flex rounded-full px-2 py-0.5 text-xs ring-1 ring-inset ' + statusBadge(a.status)}>
-                            {a.status}
-                          </span>
-                        </td>
-                        <td class="whitespace-nowrap px-4 py-2.5 font-mono tabular-nums text-text-muted">
-                          {a.applied_at ? a.applied_at.slice(0, 10) : '—'}
-                        </td>
-                        <td class="px-4 py-2.5">
-                          <button
-                            type="button"
-                            data-copy={a.id}
-                            title="Copy job id"
-                            class="font-mono text-xs text-text-subtle transition-colors hover:text-text"
-                          >
-                            {a.id}
-                          </button>
-                        </td>
-                        <td class="px-4 py-2.5 text-right">
-                          {a.url && (
-                            <a
-                              href={a.url}
-                              target="_blank"
-                              rel="noopener"
-                              class="whitespace-nowrap text-text-muted underline-offset-4 hover:text-text hover:underline"
-                            >
-                              link →
-                            </a>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            {/* Data tables (sort + filter) — one React island. */}
+            <AdminTables
+              client:load
+              today={snap.today}
+              matches={snap.matches ?? []}
+              matchesTotal={snap.matches_total ?? 0}
+              applications={snap.applications}
+            />
 
             {/* Follow-ups */}
             {snap.followups.length > 0 && (
@@ -200,56 +116,6 @@ const statusBadge = (s: string) =>
         await fetch('/api/auth/sign-out', { method: 'POST' });
         location.href = '/admin/login';
       });
-
-      // Click a job id to copy it, then paste into /jobhunt-draft in Claude.
-      document.addEventListener('click', async (e) => {
-        const el = e.target;
-        const btn = el && el.closest ? el.closest('[data-copy]') : null;
-        if (!btn) return;
-        try {
-          await navigator.clipboard.writeText(btn.getAttribute('data-copy') || '');
-          const prev = btn.textContent;
-          btn.textContent = 'copied ✓';
-          setTimeout(() => { btn.textContent = prev; }, 1200);
-        } catch (_) {}
-      });
-
-      // Click a column header to sort (accessible: role=button, aria-sort, keyboard).
-      function initSort(table) {
-        const head = table.tHead && table.tHead.rows[0];
-        const body = table.tBodies[0];
-        if (!head || !body) return;
-        Array.prototype.forEach.call(head.cells, (th) => {
-          const type = th.getAttribute('data-sort');
-          if (!type) return;
-          th.setAttribute('role', 'button');
-          th.tabIndex = 0;
-          const idx = th.cellIndex;
-          const num = (s) => {
-            const m = s.match(/-?\d[\d,]*\.?\d*/);
-            const n = m ? parseFloat(m[0].replace(/,/g, '')) : NaN;
-            return isNaN(n) ? -Infinity : n;
-          };
-          const sort = () => {
-            const asc = th.getAttribute('aria-sort') !== 'ascending';
-            Array.prototype.forEach.call(head.cells, (h) => h.removeAttribute('aria-sort'));
-            th.setAttribute('aria-sort', asc ? 'ascending' : 'descending');
-            const rows = Array.prototype.slice.call(body.rows);
-            rows.sort((a, b) => {
-              const x = (a.cells[idx] ? a.cells[idx].innerText : '').trim();
-              const y = (b.cells[idx] ? b.cells[idx].innerText : '').trim();
-              if (type === 'num') return asc ? num(x) - num(y) : num(y) - num(x);
-              return asc ? x.localeCompare(y) : y.localeCompare(x);
-            });
-            rows.forEach((r) => body.appendChild(r));
-          };
-          th.addEventListener('click', sort);
-          th.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sort(); }
-          });
-        });
-      }
-      document.querySelectorAll('table[data-sortable]').forEach(initSort);
     </script>
   </body>
 </html>

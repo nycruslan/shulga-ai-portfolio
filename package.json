@@ -23,6 +23,7 @@
     "@libsql/client": "^0.17.3",
     "@libsql/kysely-libsql": "^0.4.1",
     "@tailwindcss/vite": "^4.3.0",
+    "@tanstack/react-table": "^8.21.3",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "@upstash/ratelimit": "^2.0.8",

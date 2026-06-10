@@ -12,21 +12,36 @@ const SUBTLE =
 const INPUT =
   'w-full rounded-lg border border-border-strong bg-white/[0.03] px-3.5 py-2.5 text-sm text-text placeholder:text-text-subtle outline-none transition-colors focus:border-text/40';
 
+type Note = { text: string; error?: boolean } | null;
+
+function Feedback({ note }: { note: Note }) {
+  if (!note) return null;
+  return (
+    <p
+      role="status"
+      aria-live="polite"
+      className={'text-center text-xs ' + (note.error ? 'text-rose-300' : 'text-text-muted')}
+    >
+      {note.text}
+    </p>
+  );
+}
+
 export default function AdminLogin({ signedIn = false, email: initialEmail = '' }: Props) {
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
-  const [msg, setMsg] = useState('');
+  const [note, setNote] = useState<Note>(null);
   const [busy, setBusy] = useState(false);
 
   async function go(label: string, fn: () => Promise<{ error?: { message?: string } | null }>) {
     setBusy(true);
-    setMsg(label);
+    setNote({ text: label });
     try {
       const { error } = await fn();
-      if (error) setMsg(error.message || 'Failed');
+      if (error) setNote({ text: error.message || 'Failed', error: true });
       else location.href = '/admin';
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Failed');
+      setNote({ text: e instanceof Error ? e.message : 'Failed', error: true });
     } finally {
       setBusy(false);
     }
@@ -34,12 +49,16 @@ export default function AdminLogin({ signedIn = false, email: initialEmail = '' 
 
   async function addPasskey() {
     setBusy(true);
-    setMsg('Follow your device prompt…');
+    setNote({ text: 'Follow your device prompt…' });
     try {
       const { error } = (await authClient.passkey.addPasskey({ name: 'owner-device' })) ?? {};
-      setMsg(error ? error.message || 'Failed' : '✓ Passkey registered. Use it next time.');
+      setNote(
+        error
+          ? { text: error.message || 'Failed', error: true }
+          : { text: '✓ Passkey registered. Use it next time.' },
+      );
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Failed');
+      setNote({ text: e instanceof Error ? e.message : 'Failed', error: true });
     } finally {
       setBusy(false);
     }
@@ -62,7 +81,7 @@ export default function AdminLogin({ signedIn = false, email: initialEmail = '' 
             location.href = '/admin/login';
           }}
         >Sign out</button>
-        {msg && <p className="text-center text-xs text-text-muted">{msg}</p>}
+        <Feedback note={note} />
       </div>
     );
   }
@@ -98,7 +117,7 @@ export default function AdminLogin({ signedIn = false, email: initialEmail = '' 
         First time? Create the owner account
       </button>
 
-      {msg && <p className="text-center text-xs text-text-muted">{msg}</p>}
+      <Feedback note={note} />
     </div>
   );
 }
