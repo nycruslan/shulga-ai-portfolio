@@ -7,10 +7,10 @@ const SESSION_LIMIT = 20;
 const STORAGE_KEY = 'askme-session';
 
 const SUGGESTED = [
-  'What does Ruslan do at JPMC?',
+  "What's the hardest system he's shipped?",
+  'How does he keep agents from failing in production?',
   'Walk me through his hybrid RAG pipeline',
-  'Why should I hire him?',
-  "What's MCP and why does it matter?",
+  'What would he own as a staff engineer?',
 ];
 
 function loadSession(): { messages: Msg[]; msgCount: number } {
@@ -203,7 +203,6 @@ export default function AskMe() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="Ask my portfolio"
         data-magnetic
         className="askme-fab"
         style={{
@@ -226,6 +225,7 @@ export default function AskMe() {
         }}
       >
         <span
+          aria-hidden="true"
           style={{
             display: 'inline-block',
             width: 6,
@@ -235,7 +235,7 @@ export default function AskMe() {
             boxShadow: '0 0 10px #7af2a0',
           }}
         />
-        Ask me anything →
+        Ask me anything <span aria-hidden="true">→</span>
       </button>
     );
   }

@@ -7,6 +7,14 @@ import HeroShader from './islands/HeroShader';
     <HeroShader client:only="react" />
   </div>
 
+  <!-- Depth scrim: darkens behind the headline so type stays legible over the
+       shader at any viewport, and adds focus. Above the shader, below the text. -->
+  <div
+    class="absolute inset-0 -z-[5] pointer-events-none"
+    style="background: radial-gradient(ellipse 75% 60% at 28% 42%, color-mix(in srgb, var(--color-bg) 78%, transparent) 0%, transparent 70%);"
+  >
+  </div>
+
   <p
     class="mb-6 font-mono text-xs tracking-widest uppercase"
     style="color: var(--color-text-subtle);"
@@ -16,7 +24,7 @@ import HeroShader from './islands/HeroShader';
   </p>
 
   <h1
-    class="text-4xl font-medium tracking-tight md:text-6xl md:leading-[1.05]"
+    class="font-display text-4xl font-medium tracking-tight md:text-6xl md:leading-[1.05]"
     style="color: var(--color-text); letter-spacing: -0.02em;"
     transition:name="hero-title"
     data-hero-title

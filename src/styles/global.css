@@ -1,10 +1,15 @@
 @import '@fontsource-variable/geist';
 @import '@fontsource-variable/geist-mono';
+/* 'standard' axis = weight + optical-size, normal only. Drops italic/soft/wonk;
+   browser fetches just the ~66KB latin subset for English content. */
+@import '@fontsource-variable/fraunces/standard.css';
 @import 'tailwindcss';
 
 @theme {
   --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+  /* Display serif for headings — editorial voice against the mono + sans system. */
+  --font-display: 'Fraunces Variable', Georgia, 'Times New Roman', serif;
 
   --color-bg: #08090a;
   --color-bg-elevated: #0e1011;
@@ -22,6 +27,11 @@ html {
   font-feature-settings: 'ss01', 'cv11';
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Display serif (Fraunces) — let the variable optical-size axis track font-size. */
+.font-display {
+  font-optical-sizing: auto;
 }
 
 html.lenis,
@@ -103,9 +113,11 @@ html.lenis body {
   will-change: transform;
 }
 
-[data-magnetic]:hover {
-  background: var(--color-bg-elevated);
-  color: var(--color-text);
+@media (hover: hover) {
+  [data-magnetic]:hover {
+    background: var(--color-bg-elevated);
+    color: var(--color-text);
+  }
 }
 
 /* Project scroll-reveal targets */
