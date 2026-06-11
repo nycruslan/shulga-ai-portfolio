@@ -348,9 +348,9 @@ export default function SubstrateView() {
               <span className="live-dot inline-block size-1.5 rounded-full" style={{ background: 'var(--color-accent)' }} />
               Live · what you're watching
             </div>
-            <h3 className="font-display mt-3 text-2xl font-medium" style={{ color: 'var(--color-text)', letterSpacing: '-0.01em' }}>
+            <h2 className="font-display mt-3 text-2xl font-medium" style={{ color: 'var(--color-text)', letterSpacing: '-0.01em' }}>
               A crew of AI agents, working in real time.
-            </h3>
+            </h2>
             <ul className="mt-4 space-y-2.5 text-sm" style={{ color: 'var(--color-text-muted)' }}>
               <li>
                 <span style={{ color: 'var(--color-text)' }}>The dots are agents.</span> They pass work down a
