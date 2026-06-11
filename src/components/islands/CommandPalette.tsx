@@ -185,6 +185,8 @@ export default function CommandPalette() {
       >
         <input
           ref={inputRef}
+          name="command"
+          aria-label="Search commands"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);

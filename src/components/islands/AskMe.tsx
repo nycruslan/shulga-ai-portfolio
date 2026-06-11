@@ -231,8 +231,8 @@ export default function AskMe() {
             width: 6,
             height: 6,
             borderRadius: '50%',
-            background: '#7af2a0',
-            boxShadow: '0 0 10px #7af2a0',
+            background: 'var(--color-accent)',
+            boxShadow: '0 0 10px var(--color-accent)',
           }}
         />
         Ask me anything <span aria-hidden="true">→</span>
@@ -291,8 +291,8 @@ export default function AskMe() {
                 width: 8,
                 height: 8,
                 borderRadius: '50%',
-                background: generating ? '#7af2a0' : '#3a8f58',
-                boxShadow: generating ? '0 0 12px #7af2a0' : 'none',
+                background: generating ? 'var(--color-accent)' : 'var(--color-accent-dim)',
+                boxShadow: generating ? '0 0 12px var(--color-accent)' : 'none',
                 transition: 'background 300ms, box-shadow 300ms',
               }}
             />
@@ -380,6 +380,8 @@ export default function AskMe() {
           >
             <textarea
               ref={inputRef}
+              name="message"
+              aria-label="Ask a question about Ruslan's work"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {

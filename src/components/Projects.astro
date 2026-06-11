@@ -109,13 +109,15 @@ const projects = all.sort((a, b) => a.data.order - b.data.order);
 
   let lenisSynced = false;
 
+  // Keep ScrollTrigger in step with Lenis. Layout's single rAF loop is the
+  // only thing driving lenis.raf — adding a gsap.ticker driver here would
+  // advance the scroll animation twice per frame and stack callbacks on
+  // every view-transition swap.
   function syncLenis() {
     if (lenisSynced) return;
     const lenis = (window as any).__lenis;
     if (!lenis) return;
     lenis.on('scroll', () => ScrollTrigger.update());
-    gsap.ticker.add((time: number) => lenis.raf(time * 1000));
-    gsap.ticker.lagSmoothing(0);
     lenisSynced = true;
   }
 

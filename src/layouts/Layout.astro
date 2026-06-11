@@ -99,23 +99,60 @@ const personSchema = {
       import Lenis from 'lenis';
 
       let lenis: Lenis | null = null;
+      let rafStarted = false;
 
-      function initLenis() {
-        if (lenis) lenis.destroy();
-        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        if (reduced) return;
-        lenis = new Lenis({ duration: 1.15, smoothWheel: true });
+      // One rAF loop for the whole session. initLenis runs again on every
+      // view-transition swap; starting a loop per call would stack loops and
+      // drive lenis.raf N times a frame after N navigations.
+      function startRafLoop() {
+        if (rafStarted) return;
+        rafStarted = true;
         function raf(time: number) {
           lenis?.raf(time);
           requestAnimationFrame(raf);
         }
         requestAnimationFrame(raf);
+      }
+
+      function initLenis() {
+        if (lenis) lenis.destroy();
+        lenis = null;
+        (window as any).__lenis = null;
+        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (reduced) return;
+        lenis = new Lenis({ duration: 1.15, smoothWheel: true });
         // expose for GSAP ScrollTrigger sync
         (window as any).__lenis = lenis;
+        startRafLoop();
       }
 
       initLenis();
       document.addEventListener('astro:after-swap', initLenis);
+
+      // Magnetic CTAs — delegated at the document so they work on every page
+      // and survive view-transition swaps (per-element listeners die with the
+      // old DOM). Pointer devices with motion allowed only.
+      if (
+        window.matchMedia('(pointer: fine)').matches &&
+        !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ) {
+        document.addEventListener(
+          'mousemove',
+          (e) => {
+            const el = (e.target as HTMLElement | null)?.closest?.<HTMLElement>('[data-magnetic]');
+            if (!el) return;
+            const rect = el.getBoundingClientRect();
+            const mx = e.clientX - (rect.left + rect.width / 2);
+            const my = e.clientY - (rect.top + rect.height / 2);
+            el.style.transform = `translate(${mx * 0.25}px, ${my * 0.25}px)`;
+          },
+          { passive: true }
+        );
+        document.addEventListener('mouseout', (e) => {
+          const el = (e.target as HTMLElement | null)?.closest?.<HTMLElement>('[data-magnetic]');
+          if (el && !el.contains(e.relatedTarget as Node | null)) el.style.transform = '';
+        });
+      }
 
       // Console easter egg
       const ascii = `

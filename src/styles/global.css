@@ -51,19 +51,6 @@ h3 {
   text-wrap: balance;
 }
 
-/* Gradient hairline — section rules that fade at the edges instead of flat 1px lines. */
-.hairline {
-  border: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--color-border-strong) 18%,
-    var(--color-border-strong) 82%,
-    transparent
-  );
-}
-
 /* Single light source behind the hero — phosphor-tinted bloom from the top. */
 .hero-glow {
   background:

@@ -105,29 +105,12 @@ const updated = new Date().toLocaleDateString('en-US', { month: 'long', year: 'n
 </section>
 
 <script>
-  // Open chat handler
+  // Open chat handler (magnetic CTA handling lives in Layout — delegated,
+  // so it survives view transitions and works on every page).
   document.addEventListener('click', (e) => {
     const target = e.target as HTMLElement | null;
     if (target?.closest('[data-open-chat]')) {
       window.dispatchEvent(new CustomEvent('open-ask-me'));
     }
   });
-
-  // Magnetic CTAs (pointer devices only)
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (!reducedMotion && window.matchMedia('(pointer: fine)').matches) {
-    const magnets = document.querySelectorAll<HTMLElement>('[data-magnetic]');
-    magnets.forEach((el) => {
-      el.addEventListener('mousemove', (e) => {
-        const rect = el.getBoundingClientRect();
-        const mx = e.clientX - (rect.left + rect.width / 2);
-        const my = e.clientY - (rect.top + rect.height / 2);
-        const strength = 0.25;
-        el.style.transform = `translate(${mx * strength}px, ${my * strength}px)`;
-      });
-      el.addEventListener('mouseleave', () => {
-        el.style.transform = '';
-      });
-    });
-  }
 </script>
