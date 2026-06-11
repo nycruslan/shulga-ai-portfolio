@@ -478,5 +478,5 @@ function logColor(kind: string): string {
   if (kind === 'failed' || kind === 'quarantine' || kind === 'anomaly') return COLORS.bad;
   if (kind === 'restore' || kind === 'retry') return COLORS.warn;
   if (kind === 'directive' || kind === 'ask') return '#8a8f98';
-  return '#5e6469';
+  return '#787f86'; // AA on the panel background
 }
