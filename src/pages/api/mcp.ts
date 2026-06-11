@@ -117,6 +117,13 @@ const handler = createMcpHandler(
   },
   {
     serverInfo: { name: 'ruslan-shulga-portfolio', version: '1.0.0' },
+    // Returned in the initialize response; connecting agents read this to learn
+    // what the server is and which tool to reach for.
+    instructions:
+      'Read-only portfolio of Ruslan Shulga, VP Engineering for AI Platform at JPMorgan Chase. ' +
+      'Use get_resume for an overview, list_projects then get_project for case-study depth, ' +
+      'search_portfolio for a specific fact or metric, get_eval_summary for this chat’s tested ' +
+      'quality scores, and get_contact to reach him. All data here is public.',
   },
   {
     basePath: '/api',
