@@ -13,13 +13,14 @@ const links = [
   style="background: color-mix(in srgb, var(--color-bg) 78%, transparent); backdrop-filter: blur(20px) saturate(160%); -webkit-backdrop-filter: blur(20px) saturate(160%);"
 >
   <div
-    class="mx-auto flex max-w-5xl items-center justify-between px-6 py-4"
+    class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-5 py-4 sm:px-6"
     style="border-bottom: 1px solid var(--color-border);"
   >
-    <a href="#top" class="font-mono text-sm tracking-tight" style="color: var(--color-text);">
-      ruslanshulga.com
+    <a href="/" class="shrink-0 font-mono text-sm tracking-tight" style="color: var(--color-text);">
+      <span class="sm:hidden">ruslanshulga</span>
+      <span class="hidden sm:inline">ruslanshulga.com</span>
     </a>
-    <ul class="flex gap-7 text-sm" style="color: var(--color-text-muted);">
+    <ul class="flex gap-4 text-xs sm:gap-7 sm:text-sm" style="color: var(--color-text-muted);">
       {
         links.map((link) => (
           <li>
