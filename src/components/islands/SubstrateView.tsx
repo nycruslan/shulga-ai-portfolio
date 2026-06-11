@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CREW, ROLE_BRIEF, STATIONS } from '../../lib/substrate/crew';
+import { CREW, STATIONS } from '../../lib/substrate/crew';
 import { CONFIG } from '../../lib/substrate/types';
 import type { Agent, SnapshotResponse, World } from '../../lib/substrate/types';
 
@@ -50,6 +50,32 @@ export default function SubstrateView() {
   const [askAgent, setAskAgent] = useState<string>('helm');
   const [directive, setDirective] = useState('');
   const [question, setQuestion] = useState('');
+  const [intro, setIntro] = useState(false);
+
+  // First-visit guided intro — shown once, remembered.
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem('substrate-intro-v1')) setIntro(true);
+    } catch {
+      /* private mode — just skip the intro */
+    }
+  }, []);
+  const dismissIntro = useCallback(() => {
+    setIntro(false);
+    try {
+      localStorage.setItem('substrate-intro-v1', '1');
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  useEffect(() => {
+    if (!intro) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') dismissIntro();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [intro, dismissIntro]);
 
   const reduced = useRef(false);
   const targetsRef = useRef<World | null>(null);
@@ -197,6 +223,7 @@ export default function SubstrateView() {
       }
 
       const t = performance.now() / 1000;
+      const focusId = world.log[0]?.agentId; // the agent in the latest event
       for (const a of world.agents) {
         const target = toPx(a.pos.x, a.pos.y);
         let r = map.get(a.id);
@@ -235,6 +262,15 @@ export default function SubstrateView() {
         ctx.arc(r.x, r.y, 4, 0, Math.PI * 2);
         ctx.fillStyle = color;
         ctx.fill();
+        // focus ring — ties the "NOW" line to who it's about
+        if (a.id === focusId) {
+          const rr = reduced.current ? 13 : 12 + Math.sin(t * 4) * 3;
+          ctx.beginPath();
+          ctx.arc(r.x, r.y, rr, 0, Math.PI * 2);
+          ctx.strokeStyle = hexToRgba(COLORS.accent, 0.7);
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
         // label
         if (labels) {
           ctx.fillStyle = COLORS.text;
@@ -294,6 +330,81 @@ export default function SubstrateView() {
 
   return (
     <div>
+      {intro && (
+        <div
+          role="dialog"
+          aria-label="What you're watching"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-5"
+          style={{ background: 'rgba(8,9,10,0.78)', backdropFilter: 'blur(4px)' }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) dismissIntro();
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border p-6"
+            style={{ borderColor: 'var(--color-border-strong)', background: 'var(--color-bg-elevated)' }}
+          >
+            <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest" style={{ color: 'var(--color-accent)' }}>
+              <span className="live-dot inline-block size-1.5 rounded-full" style={{ background: 'var(--color-accent)' }} />
+              Live · what you're watching
+            </div>
+            <h3 className="font-display mt-3 text-2xl font-medium" style={{ color: 'var(--color-text)', letterSpacing: '-0.01em' }}>
+              A crew of AI agents, working in real time.
+            </h3>
+            <ul className="mt-4 space-y-2.5 text-sm" style={{ color: 'var(--color-text-muted)' }}>
+              <li>
+                <span style={{ color: 'var(--color-text)' }}>The dots are agents.</span> They pass work down a
+                pipeline — assign → retrieve → build → score. Green is working, red is quarantined.
+              </li>
+              <li>
+                <span style={{ color: 'var(--color-text)' }}>The log</span> narrates everything in plain English as
+                it happens.
+              </li>
+              <li>
+                <span style={{ color: 'var(--color-text)' }}>You can poke it.</span> Inject a problem, set a goal, or
+                ask an officer a question — they react on the next beat.
+              </li>
+            </ul>
+            <button
+              type="button"
+              autoFocus
+              onClick={dismissIntro}
+              className="mt-6 w-full rounded-lg px-4 py-2.5 text-sm font-medium transition-colors hover:bg-white"
+              style={{ background: 'var(--color-text)', color: 'var(--color-bg)' }}
+            >
+              Got it — show me
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Orientation — how to read the stage */}
+      <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 font-mono text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-1.5 rounded-full" style={{ background: COLORS.accent }} /> working
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-1.5 rounded-full" style={{ background: COLORS.idle }} /> idle
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-1.5 rounded-full" style={{ background: COLORS.bad }} /> quarantined
+        </span>
+        <span>lines = past collaborators</span>
+        <span style={{ color: 'var(--color-text-muted)' }}>
+          work flows: HELM assigns → retrieve → analyze → build → ARBITER scores
+        </span>
+      </div>
+
+      {/* NOW — the latest event in plain English, tied to the highlighted agent */}
+      <div className="mb-4 flex items-center gap-3 rounded-xl border px-4 py-2.5" style={{ borderColor: 'var(--color-border)', background: 'rgba(255,255,255,0.015)' }}>
+        <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest" style={{ color: 'var(--color-accent)' }}>
+          Now
+        </span>
+        <span className="truncate text-sm" aria-live="polite" style={{ color: 'var(--color-text)' }}>
+          {world?.log?.[0]?.text ?? 'Booting the crew…'}
+        </span>
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         {/* Stage */}
         <div
@@ -381,15 +492,25 @@ export default function SubstrateView() {
           }}
         >
           <div className="mb-2 font-mono text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-text-subtle)' }}>Set directive</div>
-          <input
-            name="directive"
-            value={directive}
-            onChange={(e) => setDirective(e.target.value)}
-            maxLength={120}
-            placeholder="e.g. prioritize the backlog"
-            className="w-full rounded-lg border bg-white/[0.03] px-3 py-2 font-mono text-xs outline-none transition-colors focus:border-text/40"
-            style={{ borderColor: 'var(--color-border-strong)', color: 'var(--color-text)' }}
-          />
+          <div className="flex gap-2">
+            <input
+              name="directive"
+              value={directive}
+              onChange={(e) => setDirective(e.target.value)}
+              maxLength={120}
+              placeholder="e.g. prioritize the backlog"
+              className="w-full rounded-lg border bg-white/[0.03] px-3 py-2 font-mono text-xs outline-none transition-colors focus:border-text/40"
+              style={{ borderColor: 'var(--color-border-strong)', color: 'var(--color-text)' }}
+            />
+            <button
+              type="submit"
+              aria-label="Send directive"
+              className="shrink-0 rounded-lg border px-3 font-mono text-sm transition-colors hover:[color:var(--color-text)]"
+              style={{ borderColor: 'var(--color-border-strong)', color: 'var(--color-text-muted)' }}
+            >
+              →
+            </button>
+          </div>
         </form>
         <form
           onSubmit={(e) => {
@@ -422,6 +543,14 @@ export default function SubstrateView() {
               className="w-full rounded-lg border bg-white/[0.03] px-3 py-2 font-mono text-xs outline-none transition-colors focus:border-text/40"
               style={{ borderColor: 'var(--color-border-strong)', color: 'var(--color-text)' }}
             />
+            <button
+              type="submit"
+              aria-label="Send question"
+              className="shrink-0 rounded-lg border px-3 font-mono text-sm transition-colors hover:[color:var(--color-text)]"
+              style={{ borderColor: 'var(--color-border-strong)', color: 'var(--color-text-muted)' }}
+            >
+              →
+            </button>
           </div>
         </form>
       </div>
@@ -429,7 +558,8 @@ export default function SubstrateView() {
         {notice}
       </p>
       <p className="mt-1 font-mono text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
-        Roles: {CREW.map((c) => `${c.callsign} ${ROLE_BRIEF[c.role].toLowerCase().replace(/\.$/, '')}`).slice(0, 3).join(' · ')} … and more.
+        Actions queue and resolve on the next tick (~12s) — never an instant model call. What each
+        officer does is in the legend just below.
       </p>
     </div>
   );
