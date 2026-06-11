@@ -55,7 +55,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: 'get_eval_summary',
     description:
-      "Fetch last night's eval scores for THIS chat (groundedness, persona, refusals, injection resistance — judged by an LLM in CI, published at /evals). Call when asked about evals, testing, reliability, or how this assistant is graded.",
+      "Fetch last night's eval scores for THIS chat: groundedness, persona, refusals, injection resistance, judged by an LLM in CI and published at /evals. Call when asked about evals, testing, reliability, or how this assistant is graded.",
     input_schema: { type: 'object', properties: {} },
   },
 ];

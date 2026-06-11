@@ -38,7 +38,7 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   const ip = clientIp(request, clientAddress);
   if (actionLimiter) {
     const { success } = await actionLimiter.limit(ip);
-    if (!success) return json({ error: 'Easy there — slow down a moment.' }, 429);
+    if (!success) return json({ error: 'Easy there, slow down a moment.' }, 429);
   }
 
   let interaction: Interaction;

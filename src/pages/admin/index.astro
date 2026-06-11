@@ -99,7 +99,7 @@ const funnel = snap?.funnel;
                 <ul class="space-y-1.5 text-sm">
                   {snap.followups.map((f) => (
                     <li class="flex items-baseline justify-between gap-3 rounded-lg border border-border bg-bg-elevated/40 px-4 py-2.5">
-                      <span>{f.company} <span class="text-text-muted">— {f.title}</span></span>
+                      <span>{f.company} <span class="text-text-muted">· {f.title}</span></span>
                       <span class="shrink-0 font-mono text-xs text-text-subtle">{f.applied_days_ago}d ago</span>
                     </li>
                   ))}

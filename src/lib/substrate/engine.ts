@@ -159,7 +159,7 @@ function judgeTask(world: World, task: Task) {
     world.stats.completed += 1;
     world.integrity = clamp(world.integrity + 2);
     if (judge) speak(judge, `pass · ${score}`);
-    log(world, 'done', `${task.label} shipped — eval ${score}/100.`, builder?.id);
+    log(world, 'done', `${task.label} shipped at ${score}/100.`, builder?.id);
     if (builder) builder.health = clamp(builder.health + 3);
   } else {
     task.stage = 'failed';
@@ -227,7 +227,7 @@ function applyInteractions(world: World, interactions: Interaction[]) {
       const target = byId(world, it.agentId);
       if (target) {
         // Templated acknowledgement; narrate.ts replaces it with a real reply.
-        speak(target, 'stand by — reading the room…', 2);
+        speak(target, 'stand by, reading the room…', 2);
         log(world, 'ask', `Visitor asked ${target.callsign}: “${(it.text ?? '').slice(0, 100)}”`, target.id);
       }
     }

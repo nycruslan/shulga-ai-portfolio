@@ -354,7 +354,7 @@ export default function SubstrateView() {
             <ul className="mt-4 space-y-2.5 text-sm" style={{ color: 'var(--color-text-muted)' }}>
               <li>
                 <span style={{ color: 'var(--color-text)' }}>The dots are agents.</span> They pass work down a
-                pipeline — assign → retrieve → build → score. Green is working, red is quarantined.
+                pipeline: assign → retrieve → build → score. Green is working, red is quarantined.
               </li>
               <li>
                 <span style={{ color: 'var(--color-text)' }}>The log</span> narrates everything in plain English as
@@ -362,7 +362,7 @@ export default function SubstrateView() {
               </li>
               <li>
                 <span style={{ color: 'var(--color-text)' }}>You can poke it.</span> Inject a problem, set a goal, or
-                ask an officer a question — they react on the next beat.
+                ask an officer a question, and they react on the next beat.
               </li>
             </ul>
             <button
@@ -372,7 +372,7 @@ export default function SubstrateView() {
               className="mt-6 w-full rounded-lg px-4 py-2.5 text-sm font-medium transition-colors hover:bg-white"
               style={{ background: 'var(--color-text)', color: 'var(--color-bg)' }}
             >
-              Got it — show me
+              Got it, show me
             </button>
           </div>
         </div>
@@ -558,8 +558,8 @@ export default function SubstrateView() {
         {notice}
       </p>
       <p className="mt-1 font-mono text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
-        Actions queue and resolve on the next tick (~12s) — never an instant model call. What each
-        officer does is in the legend just below.
+        Actions queue and resolve on the next tick (~12s), never an instant model call. The legend
+        below says what each officer does.
       </p>
     </div>
   );

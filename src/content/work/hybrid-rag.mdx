@@ -18,15 +18,15 @@ order: 2
 
 ## The problem
 
-The v1 RAG was embedding-only with a single index. Recall was fine on general queries. On the things that actually mattered — acronym-heavy compliance docs, code lookups, deeply nested policy text — it missed.
+The v1 RAG was embedding-only with a single index. Recall was fine on general queries. On the things that actually mattered, it missed. Acronym-heavy compliance docs. Code lookups where the symbol matters more than the prose around it, and the deeply nested policy text nobody chunks well.
 
 ## The shape
 
-Three retrievers run in parallel: dense (domain-tuned embeddings), sparse (BM25 over chunked text), and a small cross-encoder on the top-K union. Per use case, the index is whatever fits — Pinecone for the high-traffic general index, Weaviate where we needed hybrid out of the box, pgvector where the index lived next to relational data and joins beat round-trips.
+Three retrievers run in parallel: dense (domain-tuned embeddings), sparse (BM25 over chunked text), and a small cross-encoder on the top-K union. Per use case, the index is whatever fits. Pinecone for the high-traffic general index. Weaviate where we needed hybrid out of the box. pgvector where the index lived next to relational data, so joins beat round-trips.
 
 ## Key decisions
 
-- **Per-domain index, not one big lake.** Compliance text, code, policy, customer correspondence — each gets its own embedding model and chunking strategy. The "one giant index" pattern loses on every metric that matters.
+- **Per-domain index, not one big lake.** Compliance text, code, policy, customer correspondence. Each gets its own embedding model and chunking strategy. The "one giant index" pattern loses on every metric that matters.
 - **The eval harness is the artifact.** Nightly RAGAS runs against a versioned golden set. Every retrieval change ships behind that.
 - **Re-ranker is small and aggressive.** A bi-encoder gives you 100 candidates. The cross-encoder picks the 5 that matter. Skip this step and the LLM will quote the wrong document confidently.
 

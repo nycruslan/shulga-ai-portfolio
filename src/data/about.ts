@@ -10,7 +10,7 @@ export const about = {
   yearsTotal: 9,
   yearsAI: 4,
   summary:
-    "VP Engineering at JPMorgan Chase. I lead the AI platform team that ships multi-agent orchestration, hybrid retrieval, and custom MCP servers used by several thousand employees every day.",
+    "VP Engineering at JPMorgan Chase. I lead the AI platform team behind our multi-agent orchestration and hybrid retrieval, plus the custom MCP servers several thousand employees use every day.",
   philosophy: [
     "The pieces that matter aren't the models. They're the eval harness and the index strategy per domain.",
     'Agents that fail safely when the model misfires.',

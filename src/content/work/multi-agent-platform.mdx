@@ -22,7 +22,7 @@ A handful of operational workflows ate analyst time every day. Each one had the 
 
 ## The shape
 
-LangGraph as the orchestrator. Each node is an agent (Claude or GPT) with a narrow tool surface and persistent memory in Redis. Agents talk through typed message passing, not free-form chat. Irreversible actions — anything that writes to a system of record — pause for a human checkpoint with the proposed diff inline.
+LangGraph as the orchestrator. Each node is an agent (Claude or GPT) with a narrow tool surface and persistent memory in Redis. Agents talk through typed message passing, not free-form chat. Anything that writes to a system of record pauses for a human checkpoint, with the proposed diff inline.
 
 ## Key decisions
 
