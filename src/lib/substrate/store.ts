@@ -57,7 +57,17 @@ export type StateRow = { version: number; world: World; tickedAt: string };
 export async function readState(): Promise<StateRow | null> {
   if (!client) return null;
   await ensureSchema();
-  const rs = await client.execute('SELECT version, world, ticked_at FROM substrate_state WHERE id = 1');
+  let rs = await client.execute('SELECT version, world, ticked_at FROM substrate_state WHERE id = 1');
+  if (!rs.rows[0]) {
+    // Row missing (e.g. a manual reset on a warm instance). Self-heal: re-seed
+    // and re-read. INSERT OR IGNORE is safe if two instances race here.
+    const now = new Date().toISOString();
+    await client.execute({
+      sql: 'INSERT OR IGNORE INTO substrate_state (id, version, world, ticked_at, lock_until, updated_at) VALUES (1, 0, ?, ?, 0, ?)',
+      args: [JSON.stringify(buildInitialWorld(now)), now, now],
+    });
+    rs = await client.execute('SELECT version, world, ticked_at FROM substrate_state WHERE id = 1');
+  }
   const row = rs.rows[0];
   if (!row) return null;
   try {
