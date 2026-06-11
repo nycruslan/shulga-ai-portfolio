@@ -74,6 +74,27 @@ export default function CommandPalette() {
         run: () => window.open(about.linkedin, '_blank', 'noopener,noreferrer'),
       },
       {
+        id: 'evals',
+        title: 'View eval scores',
+        hint: '/evals',
+        keywords: 'evals tests scores quality llm judge',
+        run: () => location.assign('/evals'),
+      },
+      {
+        id: 'mcp',
+        title: 'Copy MCP endpoint',
+        hint: '/api/mcp',
+        keywords: 'mcp server agent connector tools',
+        run: async () => {
+          try {
+            await navigator.clipboard.writeText('https://ruslanshulga.com/api/mcp');
+            flash('MCP endpoint copied. Add it to Claude → Settings → Connectors.');
+          } catch {
+            flash('https://ruslanshulga.com/api/mcp');
+          }
+        },
+      },
+      {
         id: 'resume',
         title: 'View resume JSON',
         hint: '/api/me.json',

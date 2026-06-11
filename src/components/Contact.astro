@@ -84,12 +84,14 @@ const links = [
 </section>
 
 <script>
-  // Click-to-copy email with a "copied ✓" state.
+  // Click-to-copy with a "copied ✓" state (email + MCP endpoint).
   document.addEventListener('click', async (e) => {
-    const btn = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-copy-email]');
+    const btn = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+      '[data-copy-email], [data-copy-value]'
+    );
     if (!btn) return;
     try {
-      await navigator.clipboard.writeText(btn.dataset.copyEmail || '');
+      await navigator.clipboard.writeText(btn.dataset.copyEmail || btn.dataset.copyValue || '');
       const prev = btn.textContent;
       btn.textContent = 'copied ✓';
       btn.style.color = 'var(--color-accent)';
@@ -98,10 +100,63 @@ const links = [
         btn.style.color = '';
       }, 1500);
     } catch {
-      /* clipboard blocked — the mailto link still works */
+      /* clipboard blocked — the links still work */
     }
   });
 </script>
+
+<!-- Wired for agents: the machine-readable surfaces, advertised to humans. -->
+<section
+  class="mx-auto max-w-5xl px-6 py-14"
+  style="border-top: 1px solid var(--color-border);"
+  aria-label="Machine-readable endpoints"
+>
+  <div class="rounded-2xl border p-6 md:p-8" style="border-color: var(--color-border); background: rgba(255,255,255,0.015);">
+    <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+      <span class="font-mono text-xs uppercase tracking-widest" style="color: var(--color-text-subtle);">
+        <span class="live-dot mr-2 inline-block size-1.5 rounded-full align-middle" style="background: var(--color-accent);"></span>
+        Wired for agents
+      </span>
+      <span class="text-sm" style="color: var(--color-text-muted);">
+        This portfolio is machine-readable. Bring your own AI.
+      </span>
+    </div>
+
+    <dl class="mt-6 grid gap-4 font-mono text-sm md:grid-cols-3">
+      <div>
+        <dt class="text-[11px] uppercase tracking-wider" style="color: var(--color-text-subtle);">MCP server</dt>
+        <dd class="mt-1 flex items-center gap-2">
+          <button
+            type="button"
+            data-copy-value="https://ruslanshulga.com/api/mcp"
+            title="Copy MCP endpoint"
+            class="truncate text-left transition-colors hover:[color:var(--color-text)]"
+            style="color: var(--color-text-muted);"
+          >/api/mcp</button>
+          <span class="text-[11px]" style="color: var(--color-text-subtle);">click to copy</span>
+        </dd>
+      </div>
+      <div>
+        <dt class="text-[11px] uppercase tracking-wider" style="color: var(--color-text-subtle);">For LLMs</dt>
+        <dd class="mt-1">
+          <a href="/llms.txt" class="transition-colors hover:[color:var(--color-text)]" style="color: var(--color-text-muted);">/llms.txt ↗</a>
+        </dd>
+      </div>
+      <div>
+        <dt class="text-[11px] uppercase tracking-wider" style="color: var(--color-text-subtle);">JSON resume</dt>
+        <dd class="mt-1">
+          <a href="/api/me.json" class="transition-colors hover:[color:var(--color-text)]" style="color: var(--color-text-muted);">/api/me.json ↗</a>
+        </dd>
+      </div>
+    </dl>
+
+    <p class="mt-6 text-[13px] leading-relaxed" style="color: var(--color-text-subtle);">
+      Add the MCP endpoint to Claude under Settings → Connectors, or drop it in your editor's
+      mcp.json. Six read-only tools, no auth. The chat on this site runs the same toolset and
+      shows you its calls. Nightly quality scores live at <a href="/evals" class="transition-colors hover:[color:var(--color-accent)]" style="color: var(--color-text); text-decoration: underline; text-underline-offset: 4px;">/evals</a>.
+    </p>
+  </div>
+</section>
 
 <footer
   class="mx-auto max-w-5xl px-6 py-8 font-mono text-xs"

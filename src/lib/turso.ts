@@ -47,6 +47,57 @@ const client =
     ? createClient({ url: TURSO_DATABASE_URL, authToken: TURSO_AUTH_TOKEN })
     : null;
 
+export type EvalCategory = {
+  key: string;
+  label: string;
+  score: number; // 0-10 average
+  passed: number;
+  total: number;
+};
+
+export type EvalCase = {
+  id: string;
+  category: string;
+  prompt: string;
+  score: number;
+  passed: boolean;
+  note: string;
+};
+
+export type EvalRun = {
+  generated_at: string;
+  model: string;
+  judge_model: string;
+  overall: number; // 0-10
+  passed: number;
+  total: number;
+  categories: EvalCategory[];
+  cases: EvalCase[];
+};
+
+// scripts/run-evals.mjs appends one JSON row per nightly run.
+export async function readEvalRuns(limit = 30): Promise<EvalRun[]> {
+  if (!client) return [];
+  try {
+    const rs = await client.execute({
+      sql: 'SELECT data FROM eval_runs ORDER BY id DESC LIMIT ?',
+      args: [limit],
+    });
+    return rs.rows
+      .map((row) => {
+        try {
+          return JSON.parse(String(row.data)) as EvalRun;
+        } catch {
+          return null;
+        }
+      })
+      .filter((r): r is EvalRun => r !== null);
+  } catch (err) {
+    console.error('[turso] readEvalRuns failed:', err);
+    return [];
+  }
+}
+
 // The jobhunt tool writes one JSON row (id=1) to jobhunt_snapshot. We just read it.
 export async function readSnapshot(): Promise<Snapshot | null> {
   if (!client) return null;

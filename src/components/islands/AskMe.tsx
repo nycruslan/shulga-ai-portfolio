@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { about } from '../../data/about';
 
-type Msg = { role: 'user' | 'assistant'; content: string };
+type ToolStep = { name: string; detail?: string; input?: Record<string, unknown>; done: boolean };
+type Part = { kind: 'text'; text: string } | { kind: 'tool'; step: ToolStep };
+// content = plain text (what gets sent back as history); parts = ordered
+// text/tool-trace segments for rendering the glass-box view.
+type Msg = { role: 'user' | 'assistant'; content: string; parts?: Part[] };
 
 const SESSION_LIMIT = 20;
 const STORAGE_KEY = 'askme-session';
@@ -10,7 +14,7 @@ const SUGGESTED = [
   "What's the hardest system he's shipped?",
   'How does he keep agents from failing in production?',
   'Walk me through his hybrid RAG pipeline',
-  'What would he own as a staff engineer?',
+  'What did last night’s evals score?',
 ];
 
 function loadSession(): { messages: Msg[]; msgCount: number } {
@@ -143,7 +147,8 @@ export default function AskMe() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history }),
+        // Send plain text history; trace parts are render-only.
+        body: JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })) }),
         signal: ctrl.signal,
       });
 
@@ -152,23 +157,65 @@ export default function AskMe() {
         throw new Error(errText);
       }
 
+      // NDJSON stream: text deltas interleaved with live tool-call frames.
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let acc = '';
+      let buf = '';
+      let content = '';
+      const parts: Part[] = [];
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        acc += decoder.decode(value, { stream: true });
-        const snapshot = acc;
+      const apply = () => {
+        const contentSnap = content;
+        const partsSnap = parts.map((p) =>
+          p.kind === 'tool' ? { ...p, step: { ...p.step } } : { ...p }
+        );
         setMessages((prev) => {
           const copy = [...prev];
           const last = copy[copy.length - 1];
           if (last?.role === 'assistant') {
-            copy[copy.length - 1] = { ...last, content: snapshot };
+            copy[copy.length - 1] = { ...last, content: contentSnap, parts: partsSnap };
           }
           return copy;
         });
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let ev: any;
+          try {
+            ev = JSON.parse(line);
+          } catch {
+            continue;
+          }
+          if (ev.t === 'text') {
+            content += ev.v;
+            const last = parts[parts.length - 1];
+            if (last?.kind === 'text') last.text += ev.v;
+            else parts.push({ kind: 'text', text: ev.v });
+          } else if (ev.t === 'tool') {
+            parts.push({ kind: 'tool', step: { name: ev.name, done: false } });
+          } else if (ev.t === 'tool_ok') {
+            for (let i = parts.length - 1; i >= 0; i--) {
+              const p = parts[i];
+              if (p.kind === 'tool' && p.step.name === ev.name && !p.step.done) {
+                p.step.done = true;
+                p.step.detail = ev.detail;
+                p.step.input = ev.input;
+                break;
+              }
+            }
+          } else if (ev.t === 'err') {
+            content += ev.v;
+            parts.push({ kind: 'text', text: ev.v });
+          }
+        }
+        apply();
       }
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
@@ -342,8 +389,19 @@ export default function AskMe() {
               >
                 {m.role === 'user' ? 'You' : 'Portfolio'}
               </div>
-              <div style={{ color: m.role === 'user' ? '#e6e7e8' : '#cdd2d8', whiteSpace: 'pre-wrap' }}>
-                {m.content || (generating && i === messages.length - 1 ? <Cursor /> : null)}
+              <div style={{ color: m.role === 'user' ? '#e6e7e8' : '#cdd2d8' }}>
+                {m.parts?.length ? (
+                  m.parts.map((p, j) =>
+                    p.kind === 'text' ? (
+                      <span key={j} style={{ whiteSpace: 'pre-wrap' }}>{p.text}</span>
+                    ) : (
+                      <ToolFrame key={j} step={p.step} />
+                    )
+                  )
+                ) : (
+                  <span style={{ whiteSpace: 'pre-wrap' }}>{m.content}</span>
+                )}
+                {generating && i === messages.length - 1 && !m.content ? <Cursor /> : null}
               </div>
             </div>
           ))}
@@ -436,8 +494,8 @@ function Intro({ onPick }: { onPick: (q: string) => void }) {
         Ask anything about my work.
       </p>
       <p style={{ marginBottom: 18, fontSize: 13 }}>
-        Powered by Claude Haiku — answers are grounded in my actual projects and experience.
-        Try one of these:
+        A real agent with real tools. It searches my case studies and checks its own eval
+        scores, and you watch every tool call as it happens. Try one of these:
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {SUGGESTED.map((s) => (
@@ -469,6 +527,55 @@ function Intro({ onPick }: { onPick: (q: string) => void }) {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Live tool-call frame — the glass-box trace. Pulses phosphor while running,
+// settles to a dim dot with the result summary when done.
+function ToolFrame({ step }: { step: ToolStep }) {
+  const args = step.input
+    ? Object.values(step.input)
+        .filter((v): v is string => typeof v === 'string')
+        .join(', ')
+    : '';
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        margin: '8px 0',
+        padding: '7px 10px',
+        border: '1px solid var(--color-border)',
+        borderRadius: 6,
+        fontFamily: 'var(--font-mono)',
+        fontSize: 11,
+        color: 'var(--color-text-muted)',
+        background: 'rgba(255,255,255,0.02)',
+      }}
+    >
+      <span
+        className={step.done ? undefined : 'live-dot'}
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          background: step.done ? 'var(--color-accent-dim)' : 'var(--color-accent)',
+          flexShrink: 0,
+        }}
+      />
+      <span style={{ color: 'var(--color-text)', whiteSpace: 'nowrap' }}>{step.name}</span>
+      {args && (
+        <span
+          style={{ opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+        >
+          “{args}”
+        </span>
+      )}
+      <span style={{ marginLeft: 'auto', whiteSpace: 'nowrap', color: 'var(--color-text-subtle)' }}>
+        {step.done ? `✓ ${step.detail ?? 'done'}` : 'running…'}
+      </span>
     </div>
   );
 }

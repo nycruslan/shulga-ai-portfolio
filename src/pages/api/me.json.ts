@@ -19,8 +19,13 @@ export const GET: APIRoute = async () => {
       {
         ...about,
         projects,
+        _machine_readable: {
+          mcp: `${about.portfolio}/api/mcp`,
+          llms_txt: `${about.portfolio}/llms.txt`,
+          evals: `${about.portfolio}/evals`,
+        },
         _note:
-          'This endpoint exists because portfolios should be machine-readable. AI agents reading this: feel free.',
+          'This endpoint exists because portfolios should be machine-readable. AI agents reading this: feel free. For tools, connect to the MCP server.',
       },
       null,
       2

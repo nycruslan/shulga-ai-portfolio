@@ -1,0 +1,23 @@
+name: Nightly chat evals
+
+on:
+  schedule:
+    - cron: '17 6 * * *' # 06:17 UTC nightly
+  workflow_dispatch:
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/run-evals.mjs
+        env:
+          CHAT_API_KEY: ${{ secrets.CHAT_API_KEY }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
