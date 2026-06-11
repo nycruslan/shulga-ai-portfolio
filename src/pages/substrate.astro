@@ -1,0 +1,71 @@
+---
+export const prerender = false;
+import Layout from '../layouts/Layout.astro';
+import Nav from '../components/Nav.astro';
+import SubstrateView from '../components/islands/SubstrateView.tsx';
+
+// The Substrate: an AI platform rendered as a living, crewed vessel. Each role
+// is a real piece of the stack, so the simulation doubles as a work sample.
+const legend = [
+  ['HELM', 'orchestrator', 'assigns and routes work — multi-agent orchestration'],
+  ['IDX-1 / IDX-2', 'retrievers', 'pull context from the Memory Core — hybrid RAG'],
+  ['GATEWAY', 'tool gateway', 'calls external tools — MCP'],
+  ['ARBITER', 'eval judge', 'scores every output — the eval harness'],
+  ['WARDEN', 'supervisor', 'quarantines and restarts failing agents — fail-safe'],
+];
+---
+
+<Layout
+  title="The Substrate — Ruslan Shulga"
+  description="A live, shared AI platform rendered as a crewed vessel: an orchestrator routes work, retrievers query a memory core, an eval judge scores outputs, and a supervisor quarantines failing agents. Watch it, and perturb it."
+>
+  <Nav />
+  <main id="main" tabindex="-1" class="mx-auto max-w-6xl px-6 pt-20 pb-28 md:pt-28">
+    <p class="mb-6 font-mono text-xs tracking-widest uppercase" style="color: var(--color-text-subtle);">
+      The Substrate
+    </p>
+
+    <h1 class="font-display max-w-3xl text-3xl font-medium md:text-5xl" style="color: var(--color-text); letter-spacing: -0.02em;">
+      An AI platform you can watch breathe.
+    </h1>
+
+    <p class="mt-6 max-w-2xl text-base leading-relaxed md:text-lg" style="color: var(--color-text-muted);">
+      One shared world, live for everyone. An orchestrator routes work to the crew, retrievers
+      query a memory core, an eval judge scores every output, and a supervisor quarantines and
+      restarts agents that fail. It's the stack I build, rendered as an organism. It sleeps when
+      no one is looking, and wakes when you are.
+    </p>
+
+    <div class="mt-10">
+      <SubstrateView client:only="react" />
+    </div>
+
+    <section class="mt-14">
+      <h2 class="font-display text-xl font-medium md:text-2xl" style="color: var(--color-text);">
+        Every system on screen is real
+      </h2>
+      <p class="mt-2 max-w-2xl text-sm" style="color: var(--color-text-muted);">
+        This isn't a cartoon. The pipeline, the scoring, and the failover are the same shapes I
+        ship in production. The crew is labeled so you can read it as the architecture it is.
+      </p>
+      <dl class="mt-6 grid gap-3 sm:grid-cols-2">
+        {
+          legend.map(([who, role, what]) => (
+            <div class="rounded-xl border p-4" style="border-color: var(--color-border); background: rgba(255,255,255,0.015);">
+              <dt class="font-mono text-sm" style="color: var(--color-text);">
+                {who} <span style="color: var(--color-text-subtle);">· {role}</span>
+              </dt>
+              <dd class="mt-1 text-sm" style="color: var(--color-text-muted);">{what}</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </section>
+
+    <p class="mt-12 font-mono text-xs" style="color: var(--color-text-subtle);">
+      Cheap by design: a deterministic simulation runs free, and Claude only adds the crew's voice
+      on a budget-capped tick. Visitor actions queue and resolve on the next tick, so they never
+      cost a synchronous model call.
+    </p>
+  </main>
+</Layout>

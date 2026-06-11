@@ -28,6 +28,13 @@ export default function CommandPalette() {
         run: () => window.dispatchEvent(new CustomEvent('open-ask-me')),
       },
       {
+        id: 'substrate',
+        title: 'Enter the Substrate',
+        hint: 'live agent world',
+        keywords: 'substrate agents simulation live crew ship organism orchestration',
+        run: () => location.assign('/substrate'),
+      },
+      {
         id: 'work',
         title: 'Jump to work',
         keywords: 'projects portfolio cases',
