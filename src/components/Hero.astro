@@ -5,7 +5,10 @@ import HeroShader from './islands/HeroShader';
 const updated = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 ---
 
-<section id="top" class="relative mx-auto max-w-5xl px-6 pt-32 pb-24 md:pt-44 md:pb-32 overflow-visible">
+<section id="top" class="relative overflow-visible">
+  <!-- Background layers bleed the full viewport width; only the text column
+       below is constrained. The shader reads its container size, so it renders
+       edge to edge. -->
   <div class="absolute inset-x-0 -top-20 -bottom-20 -z-10 pointer-events-none">
     <HeroShader client:only="react" />
   </div>
@@ -15,10 +18,11 @@ const updated = new Date().toLocaleDateString('en-US', { month: 'long', year: 'n
   <div class="hero-glow absolute inset-x-0 -top-20 -bottom-20 -z-[6] pointer-events-none"></div>
   <div
     class="absolute inset-0 -z-[5] pointer-events-none"
-    style="background: radial-gradient(ellipse 75% 60% at 28% 42%, color-mix(in srgb, var(--color-bg) 78%, transparent) 0%, transparent 70%);"
+    style="background: radial-gradient(ellipse 62% 60% at 36% 42%, color-mix(in srgb, var(--color-bg) 78%, transparent) 0%, transparent 70%);"
   >
   </div>
 
+  <div class="mx-auto max-w-5xl px-6 pt-32 pb-24 md:pt-44 md:pb-32">
   <p
     class="mb-7 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-xs tracking-widest uppercase"
     style="color: var(--color-text-subtle);"
@@ -102,6 +106,7 @@ const updated = new Date().toLocaleDateString('en-US', { month: 'long', year: 'n
   <p class="mt-10 font-mono text-xs" style="color: var(--color-text-subtle);" data-hero-reveal="4">
     Updated {updated}<span class="hidden md:inline"> · Press <kbd class="px-1.5 py-0.5 rounded border" style="border-color: var(--color-border); color: var(--color-text-muted);">⌘ K</kbd> for commands</span>
   </p>
+  </div>
 </section>
 
 <script>

@@ -133,6 +133,19 @@ const projects = all.sort((a, b) => a.data.order - b.data.order);
     });
   }
 
+  // Elements already inside the viewport when the page (re)initializes must
+  // appear instantly. Replaying entrance animations on content the visitor was
+  // just looking at — returning from a case study, refreshing mid-page — reads
+  // as broken, and the view-transition title morph would land on an invisible
+  // card while it fades back in.
+  function revealInstantly(el: HTMLElement) {
+    el.style.transition = 'none';
+    el.classList.add('is-in');
+    requestAnimationFrame(() => {
+      el.style.transition = '';
+    });
+  }
+
   function init() {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-project-card]'));
@@ -146,66 +159,84 @@ const projects = all.sort((a, b) => a.data.order - b.data.order);
 
     syncLenis();
 
-    cards.forEach((card) => {
-      ScrollTrigger.create({
-        trigger: card,
-        start: 'top 88%',
-        once: true,
-        onEnter: () => card.classList.add('is-in'),
-      });
+    // Wait one frame so the router's scroll restoration has settled before we
+    // decide what is "already in view".
+    requestAnimationFrame(() => {
+      const inView = (el: HTMLElement) =>
+        el.getBoundingClientRect().top < window.innerHeight * 0.88;
 
-      const tags = card.querySelectorAll<HTMLElement>('[data-tag]');
-      if (tags.length) {
-        gsap.set(tags, { opacity: 0, y: 8 });
+      cards.forEach((card) => {
+        if (inView(card)) {
+          // Already on screen: show as-is. SSR metric text is final and tags
+          // are visible by default, so skipping their triggers is correct.
+          revealInstantly(card);
+          return;
+        }
+
         ScrollTrigger.create({
           trigger: card,
-          start: 'top 85%',
+          start: 'top 88%',
           once: true,
-          onEnter: () =>
-            gsap.to(tags, { opacity: 1, y: 0, duration: 0.5, stagger: 0.04, ease: 'power2.out' }),
+          onEnter: () => card.classList.add('is-in'),
         });
-      }
 
-      const metricEls = card.querySelectorAll<HTMLElement>('[data-metric-value]');
-      metricEls.forEach((el) => {
-        const raw = el.dataset.metricValue || '';
-        const numMatch = raw.match(/(-?\d+(?:\.\d+)?)/);
-        if (!numMatch) return;
-        const finalNum = parseFloat(numMatch[1]);
-        const prefix = raw.substring(0, numMatch.index!);
-        const suffix = raw.substring(numMatch.index! + numMatch[1].length);
-        const isInt = finalNum % 1 === 0;
+        const tags = card.querySelectorAll<HTMLElement>('[data-tag]');
+        if (tags.length) {
+          gsap.set(tags, { opacity: 0, y: 8 });
+          ScrollTrigger.create({
+            trigger: card,
+            start: 'top 85%',
+            once: true,
+            onEnter: () =>
+              gsap.to(tags, { opacity: 1, y: 0, duration: 0.5, stagger: 0.04, ease: 'power2.out' }),
+          });
+        }
+
+        const metricEls = card.querySelectorAll<HTMLElement>('[data-metric-value]');
+        metricEls.forEach((el) => {
+          const raw = el.dataset.metricValue || '';
+          const numMatch = raw.match(/(-?\d+(?:\.\d+)?)/);
+          if (!numMatch) return;
+          const finalNum = parseFloat(numMatch[1]);
+          const prefix = raw.substring(0, numMatch.index!);
+          const suffix = raw.substring(numMatch.index! + numMatch[1].length);
+          const isInt = finalNum % 1 === 0;
+          ScrollTrigger.create({
+            trigger: card,
+            start: 'top 80%',
+            once: true,
+            onEnter: () => {
+              const obj = { val: 0 };
+              gsap.to(obj, {
+                val: finalNum,
+                duration: 1.4,
+                ease: 'power2.out',
+                onUpdate: () => {
+                  const v = isInt ? Math.round(obj.val) : obj.val.toFixed(1);
+                  el.textContent = `${prefix}${v}${suffix}`;
+                },
+              });
+            },
+          });
+        });
+      });
+
+      // Section heading reveals (About, Selected Work, Contact)
+      document.querySelectorAll<HTMLElement>('[data-section-reveal]').forEach((el) => {
+        if (inView(el)) {
+          revealInstantly(el);
+          return;
+        }
         ScrollTrigger.create({
-          trigger: card,
-          start: 'top 80%',
+          trigger: el,
+          start: 'top 90%',
           once: true,
-          onEnter: () => {
-            const obj = { val: 0 };
-            gsap.to(obj, {
-              val: finalNum,
-              duration: 1.4,
-              ease: 'power2.out',
-              onUpdate: () => {
-                const v = isInt ? Math.round(obj.val) : obj.val.toFixed(1);
-                el.textContent = `${prefix}${v}${suffix}`;
-              },
-            });
-          },
+          onEnter: () => el.classList.add('is-in'),
         });
       });
-    });
 
-    // Section heading reveals (About, Selected Work, Contact)
-    document.querySelectorAll<HTMLElement>('[data-section-reveal]').forEach((el) => {
-      ScrollTrigger.create({
-        trigger: el,
-        start: 'top 90%',
-        once: true,
-        onEnter: () => el.classList.add('is-in'),
-      });
+      requestAnimationFrame(() => ScrollTrigger.refresh());
     });
-
-    requestAnimationFrame(() => ScrollTrigger.refresh());
   }
 
   init();

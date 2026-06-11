@@ -92,6 +92,10 @@ const personSchema = {
       document.addEventListener('astro:after-swap', () => {
         const pre = document.querySelector('[data-preloader]') as HTMLElement | null;
         if (pre) pre.remove();
+        // Swapped documents have no preloader, so the hero intro must not wait
+        // for one — global.css collapses the choreography delays under .is-swap.
+        // (Re-added every swap: Astro resets <html> attributes during swaps.)
+        document.documentElement.classList.add('is-swap');
       });
     </script>
 
