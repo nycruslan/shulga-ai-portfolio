@@ -1,0 +1,32 @@
+name: Garden heartbeat
+
+# Keeps the garden living when no one is watching. GitHub Actions cron is free,
+# so this is the autonomy guarantee: every few hours it advances a burst of ticks
+# (plants grow, creatures talk, bonds form, sometimes a new one is born or a charm
+# is crafted). Everything is bounded by the garden's daily call cap and the lease
+# lock. It can also be run by hand from the Actions tab.
+
+on:
+  schedule:
+    - cron: '0 */3 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  beat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Advance the garden
+        env:
+          # Override with a repo variable GARDEN_HEARTBEAT_URL if the domain differs.
+          URL: ${{ vars.GARDEN_HEARTBEAT_URL || 'https://ruslanshulga.com/api/garden/heartbeat' }}
+          TICK_SECRET: ${{ secrets.TICK_SECRET }}
+        run: |
+          echo "Beating $URL"
+          status=$(curl -sS -o /tmp/out.json -w '%{http_code}' -X POST "$URL" \
+            -H 'Content-Type: application/json' \
+            -H "x-tick-secret: $TICK_SECRET" \
+            -d '{}')
+          echo "HTTP $status"
+          cat /tmp/out.json || true
+          # A locked response is a normal no-op, not a failure.
+          if [ "$status" -ge 500 ]; then exit 1; fi

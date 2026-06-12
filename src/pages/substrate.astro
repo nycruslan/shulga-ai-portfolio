@@ -3,9 +3,15 @@ export const prerender = false;
 import Layout from '../layouts/Layout.astro';
 import Nav from '../components/Nav.astro';
 import SubstrateView from '../components/islands/SubstrateView.tsx';
+import { isConfigured as gardenConfigured, readState as gardenReadState } from '../lib/garden/store';
 
 // The Substrate: an AI platform rendered as a living, crewed vessel. Each role
 // is a real piece of the stack, so the simulation doubles as a work sample.
+
+// A society of agents also lives next door in the Garden. Surface the headcount
+// so the two worlds read as one organism.
+const gardenRow = gardenConfigured() ? await gardenReadState() : null;
+const gardenPop = gardenRow ? gardenRow.state.agents.filter((a) => a.alive).length : 0;
 const legend = [
   ['HELM', 'orchestrator', "Assigns and routes the crew's work. The orchestration layer."],
   ['IDX-1 / IDX-2', 'retrievers', "Pull context from the Memory Core. That's hybrid RAG."],
@@ -39,6 +45,26 @@ const legend = [
     <div class="mt-10">
       <SubstrateView client:load />
     </div>
+
+    {
+      gardenRow && (
+        <a
+          href="/garden"
+          class="group mt-6 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border p-4 transition-colors hover:[border-color:var(--color-accent)]"
+          style="border-color: var(--color-border); background: rgba(255,255,255,0.015);"
+        >
+          <span class="font-display text-2xl font-medium tabular-nums" style="color: var(--color-text);">
+            {gardenPop}
+          </span>
+          <span class="text-sm" style="color: var(--color-text-muted);">
+            small AI creatures live next door in the Garden. They talk, bond, and raise new ones on their own.
+          </span>
+          <span class="ml-auto font-mono text-sm transition-transform group-hover:translate-x-0.5" style="color: var(--color-accent);">
+            Visit the Garden →
+          </span>
+        </a>
+      )
+    }
 
     <section class="mt-14">
       <h2 class="font-display text-xl font-medium md:text-2xl" style="color: var(--color-text);">

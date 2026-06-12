@@ -13,6 +13,10 @@ export default defineConfig({
   env: {
     schema: {
       CHAT_API_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
+      // Shared secret the GitHub Actions heartbeat sends to /api/foundry/build so
+      // the crew keeps building with zero visitors. Optional: visitor traffic also
+      // triggers builds, bounded by the same cadence + daily cap regardless.
+      TICK_SECRET: envField.string({ context: 'server', access: 'secret', optional: true }),
       // Optional. When both are set, /api/chat enforces per-IP rate limiting.
       // Provision free via the Upstash integration in the Vercel Marketplace.
       UPSTASH_REDIS_REST_URL: envField.string({ context: 'server', access: 'secret', optional: true }),

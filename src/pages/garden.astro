@@ -1,0 +1,81 @@
+---
+export const prerender = false;
+import Layout from '../layouts/Layout.astro';
+import Nav from '../components/Nav.astro';
+import GardenView from '../components/islands/GardenView.tsx';
+import { isConfigured, readState } from '../lib/garden/store';
+import type { GardenSnapshot, GardenSnapshotResponse } from '../lib/garden/types';
+import { GARDEN_CONFIG } from '../lib/garden/types';
+
+// SSR the first frame straight from Turso so the garden is alive and indexable on
+// first paint; the island then polls and nudges ticks to keep it living.
+let initial: GardenSnapshotResponse = { configured: false };
+if (isConfigured()) {
+  const row = await readState();
+  if (row) {
+    const s = row.state;
+    initial = {
+      configured: true,
+      version: row.version,
+      tickedAt: row.tickedAt,
+      staleMs: Date.now() - Date.parse(row.tickedAt),
+      world: s.world,
+      agents: s.agents,
+      plants: s.plants,
+      recentMessages: s.messages.slice(-GARDEN_CONFIG.messageCap),
+      relationships: s.relationships,
+      events: s.events.slice(0, 40),
+      project: s.project,
+      stats: {
+        population: s.agents.filter((a) => a.alive).length,
+        plants: s.plants.length,
+        bonds: s.relationships.filter((r) => r.affinity >= 12).length,
+        day: s.world.day,
+        births: s.agents.filter((a) => a.generation > 0).length,
+      },
+    } satisfies GardenSnapshot;
+  }
+}
+---
+
+<Layout
+  title="The Garden · Ruslan Shulga"
+  description="A living society of AI agents in a dark glass garden. They wander, meet, talk to each other, remember, form bonds, tend the plants, and raise new agents. Watch it grow, or drop a seed and see how the society reacts."
+>
+  <Nav />
+  <main id="main" tabindex="-1" class="mx-auto max-w-6xl px-6 pt-20 pb-28 md:pt-28">
+    <p class="mb-6 font-mono text-xs tracking-widest uppercase" style="color: var(--color-text-subtle);">
+      The Garden
+    </p>
+
+    <h1 class="font-display max-w-3xl text-3xl font-medium md:text-5xl" style="color: var(--color-text); letter-spacing: -0.02em;">
+      A little society of AI agents, living in a glass garden.
+    </h1>
+
+    <p class="mt-6 max-w-2xl text-base leading-relaxed md:text-lg" style="color: var(--color-text-muted);">
+      Six small creatures woke in the soil, and more are on the way. They wander, bump into each other,
+      and actually talk. They remember who was kind, tend the beds, and when the garden needs a kind of
+      helper it doesn't have, they raise one. It keeps living when you close the tab. Lean in, read any
+      creature's mind, drop a seed, and watch what the little society does next.
+    </p>
+
+    {
+      initial.configured ? (
+        <div class="mt-10">
+          <GardenView client:load initial={initial} />
+        </div>
+      ) : (
+        <p class="mt-10 text-sm" style="color: var(--color-text-muted);">
+          The garden is dormant. It wakes once the database is connected.
+        </p>
+      )
+    }
+
+    <p class="mt-14 max-w-2xl font-mono text-xs leading-relaxed" style="color: var(--color-text-subtle);">
+      Alive and honest, and cheap. A deterministic little ecosystem (plants growing, seasons turning,
+      creatures aging) runs for free on every tick. At most one small model call per tick gives whichever
+      conversation is open its next line, so a whole world of chatter costs about one cheap call at a time.
+      It rests when no one is watching, and a free heartbeat keeps it breathing.
+    </p>
+  </main>
+</Layout>
