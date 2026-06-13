@@ -111,3 +111,54 @@ export async function readSnapshot(): Promise<Snapshot | null> {
     return null;
   }
 }
+
+// ── AI trader dashboard ───────────────────────────────────────────────────────
+// publish_trader.py (on the trading Mac) writes one JSON row (id=1) to
+// trader_snapshot. Every field is optional on purpose: the publisher versions
+// the payload and degrades section-by-section, so the dashboard must never
+// assume a field exists. Add/remove data on the publisher side without touching
+// this type and the page still renders.
+export type TraderBook = {
+  name?: string; equity?: number; start?: number; pnl_pct?: number | null;
+  alpha_pct?: number | null; win_rate?: number | null; open_n?: number | null;
+  closed_n?: number | null; reward_risk?: number | null;
+  stop_exits?: number | null; time_exits?: number | null;
+};
+export type TraderPosition = {
+  book?: string; symbol?: string; entry?: number | null; current?: number | null;
+  pnl_pct?: number | null; pnl_usd?: number | null; days_held?: number | null;
+  days_left?: number | null; stop_dist_pct?: number | null; pct_of_book?: number | null;
+  conviction?: string | null; source?: string | null; earnings_days?: number | null;
+  thesis?: string | null;
+};
+export type TraderClosed = {
+  book?: string; symbol?: string; return_pct?: number | null; pnl_usd?: number | null;
+  exit_reason?: string | null; source?: string | null; closed_at?: string | null;
+};
+export type EquityPoint = { t?: string; equity?: number | null; ret_pct?: number | null; bench_pct?: number | null };
+export type TraderSnapshot = {
+  schema_version?: number;
+  generated_at?: string;
+  degraded?: string[];
+  books?: TraderBook[];
+  positions?: TraderPosition[];
+  closed?: TraderClosed[];
+  equity_curve?: Record<string, EquityPoint[]>;
+  learning?: Record<string, unknown>;
+  reflections?: Array<{ symbol?: string; verdict?: string; lesson?: string; return_pct?: number | null; created_at?: string }>;
+  regime?: Record<string, unknown>;
+  monitor?: Record<string, unknown>;
+};
+
+export async function readTraderSnapshot(): Promise<TraderSnapshot | null> {
+  if (!client) return null;
+  try {
+    const rs = await client.execute('SELECT data FROM trader_snapshot WHERE id = 1');
+    const row = rs.rows[0];
+    if (!row || row.data == null) return null;
+    return JSON.parse(String(row.data)) as TraderSnapshot;
+  } catch (err) {
+    console.error('[turso] readTraderSnapshot failed:', err);
+    return null;
+  }
+}
