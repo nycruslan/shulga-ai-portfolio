@@ -162,7 +162,7 @@ const decided = turso ? (await listProposals(turso)).filter((p) => p.status !== 
         notice && (
           <p
             class="rounded-md p-3 font-mono text-xs"
-            style={`border: 1px solid ${notice.kind === 'ok' ? 'var(--color-accent-dim)' : '#e2a04a'}; color: ${notice.kind === 'ok' ? 'var(--color-accent)' : '#e2a04a'};`}
+            style={`border: 1px solid ${notice.kind === 'ok' ? 'var(--color-accent-dim)' : 'var(--color-warning)'}; color: ${notice.kind === 'ok' ? 'var(--color-accent)' : 'var(--color-warning)'};`}
           >
             {notice.text}
           </p>
@@ -187,7 +187,7 @@ const decided = turso ? (await listProposals(turso)).filter((p) => p.status !== 
               #{p.id} · {p.key} · attempt {p.attempts} · {p.createdAt.slice(0, 16)}Z
             </p>
             <p class="text-sm" style="color: var(--color-text-muted);">
-              <span class="font-mono text-xs" style="color: #e2a04a;">
+              <span class="font-mono text-xs" style="color: var(--color-warning);">
                 finding:
               </span>{' '}
               {p.finding}

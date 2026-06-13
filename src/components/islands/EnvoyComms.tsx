@@ -59,7 +59,7 @@ function MissionCard({ progress, state }: { progress?: DispatchProgress; state: 
     progress?.state === 'done'
       ? 'var(--color-accent)'
       : progress?.state === 'failed'
-        ? '#e2a04a'
+        ? 'var(--color-warning)'
         : 'var(--color-text-muted)';
   return (
     <div
@@ -243,7 +243,7 @@ function CommsSession({
           </li>
         ))}
         {error && (
-          <li className="font-mono text-xs" style={{ color: '#e2a04a' }}>
+          <li className="font-mono text-xs" style={{ color: 'var(--color-warning)' }}>
             {error.message.includes('429')
               ? 'Rate limited. The channel reopens within the hour.'
               : 'The channel dropped. Send that again.'}
@@ -259,8 +259,7 @@ function CommsSession({
               key={s}
               type="button"
               onClick={() => send(s)}
-              className="rounded-full px-3 py-1 font-mono text-[11px] transition-colors hover:[color:var(--color-text)]"
-              style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}
+              className="bridge-chip rounded-full px-3 py-1.5 font-mono text-[11px]"
             >
               {s}
             </button>
@@ -290,11 +289,7 @@ function CommsSession({
         <button
           type="submit"
           disabled={busy || !input.trim()}
-          className="rounded-md px-4 py-2 font-mono text-xs disabled:opacity-40"
-          style={{
-            border: '1px solid var(--color-accent-dim)',
-            color: 'var(--color-accent)',
-          }}
+          className="bridge-btn rounded-md px-4 py-2 font-mono text-xs"
         >
           send
         </button>

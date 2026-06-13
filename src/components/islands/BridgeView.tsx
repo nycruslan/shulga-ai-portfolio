@@ -176,7 +176,7 @@ export default function BridgeView({ initial }: Props) {
               borderRadius: 9999,
               background:
                 replayCutoff !== null
-                  ? '#e2a04a'
+                  ? 'var(--color-warning)'
                   : live
                     ? 'var(--color-accent)'
                     : 'var(--color-text-subtle)',
@@ -187,7 +187,7 @@ export default function BridgeView({ initial }: Props) {
             style={{
               color:
                 replayCutoff !== null
-                  ? '#e2a04a'
+                  ? 'var(--color-warning)'
                   : live
                     ? 'var(--color-accent)'
                     : 'var(--color-text-subtle)',
@@ -384,20 +384,27 @@ export default function BridgeView({ initial }: Props) {
               return (
                 <li
                   key={m.id}
-                  className="rounded-md p-3 transition-opacity duration-200"
+                  className="rounded-md p-3 transition-[opacity,border-color] duration-200"
                   style={{
-                    border: `1px solid ${speaking ? 'var(--color-accent-dim)' : 'var(--color-border)'}`,
-                    opacity: speaking || !lastSpeaker ? 1 : 0.65,
+                    borderWidth: 1,
+                    borderStyle: 'solid',
+                    borderColor: speaking ? 'var(--color-accent-dim)' : 'var(--color-border)',
+                    opacity: speaking || !lastSpeaker ? 1 : 0.62,
                   }}
                 >
                   <div className="flex items-baseline justify-between gap-2">
-                    <span className="font-mono text-sm" style={{ color: 'var(--color-text)' }}>
+                    <span
+                      className="font-mono text-sm"
+                      style={{ color: speaking ? 'var(--color-accent)' : 'var(--color-text)' }}
+                    >
                       {m.name}
                     </span>
+                    {/* Neutral micro-label: rations the green (active state owns
+                        it) and keeps small text above AA contrast. */}
                     <span
-                      className="font-mono text-[10px] uppercase"
+                      className="font-mono text-[10px] tracking-widest uppercase"
                       style={{
-                        color: m.online ? 'var(--color-accent-dim)' : 'var(--color-text-subtle)',
+                        color: m.online ? 'var(--color-text-muted)' : 'var(--color-text-subtle)',
                       }}
                     >
                       {m.online ? m.station : `${m.station} · offline`}
@@ -425,7 +432,11 @@ export default function BridgeView({ initial }: Props) {
         style={{ background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)' }}
       >
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 font-mono text-xs">
-          <span style={{ color: 'var(--color-text-muted)' }} data-testid="spend-meter">
+          <span
+            className="tabular-nums"
+            style={{ color: 'var(--color-text-muted)' }}
+            data-testid="spend-meter"
+          >
             today: {feed.spend.calls} model {feed.spend.calls === 1 ? 'call' : 'calls'} · $
             {feed.spend.costUsd.toFixed(2)} of thinking · cap {feed.spend.cap}
           </span>
@@ -500,7 +511,7 @@ export default function BridgeView({ initial }: Props) {
                             m.status === 'done'
                               ? 'var(--color-accent)'
                               : m.status === 'failed'
-                                ? '#e2a04a'
+                                ? 'var(--color-warning)'
                                 : 'var(--color-text)',
                         }}
                       >

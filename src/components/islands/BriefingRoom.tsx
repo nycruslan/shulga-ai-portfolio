@@ -169,8 +169,7 @@ function BriefingSession({
         <button
           type="submit"
           disabled={busy || input.trim().length < 8}
-          className="rounded-md px-4 py-2 font-mono text-xs disabled:opacity-40"
-          style={{ border: '1px solid var(--color-accent-dim)', color: 'var(--color-accent)' }}
+          className="bridge-btn rounded-md px-4 py-2 font-mono text-xs"
         >
           {busy ? 'assembling…' : 'assemble briefing'}
         </button>
@@ -190,13 +189,15 @@ function BriefingSession({
         <p
           className="font-mono text-xs"
           aria-live="polite"
-          style={{ color: stage?.stage === 'failed' ? '#e2a04a' : 'var(--color-text-subtle)' }}
+          style={{
+            color: stage?.stage === 'failed' ? 'var(--color-warning)' : 'var(--color-text-subtle)',
+          }}
         >
           {stage?.note ?? 'Opening the dossier…'}
         </p>
       )}
       {error && (
-        <p className="font-mono text-xs" style={{ color: '#e2a04a' }}>
+        <p className="font-mono text-xs" style={{ color: 'var(--color-warning)' }}>
           {error.message.includes('429')
             ? 'Rate limited (3 briefings per hour). Try again later.'
             : 'Composition failed. Send the role line again.'}

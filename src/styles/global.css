@@ -24,10 +24,16 @@
   /* Phosphor — the one accent. Was only the chat status dot; now systemic:
      selection, focus, live markers, hover spotlight. Used sparingly on purpose. */
   --color-accent: #7af2a0;
-  --color-accent-dim: #3a8f58;
+  --color-accent-dim: #3a8f58; /* decorative/UI borders only — fails AA as small text */
 
-  /* One easing personality everywhere: expo-out (Linear's signature curve). */
+  /* Single semantic status color (replay, warnings, soft failures). ~6.2:1 on
+     bg. Tokenized so it stops being hardcoded in six components. */
+  --color-warning: #e2a04a;
+
+  /* Two easing personalities. expo for expressive reveals; standard (M3) for
+     interactive state changes — hovers, presses, focus. */
   --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
 }
 
 html {
@@ -404,11 +410,84 @@ a {
   text-decoration: none;
 }
 
-/* Keyboard focus ring — visible only for keyboard users, not mouse clicks */
+/* Keyboard focus ring — visible only for keyboard users, not mouse clicks.
+   Soft accent halo (Stripe-style) instead of a hard outline. Outline kept as a
+   high-contrast-mode / no-box-shadow fallback. */
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid transparent;
   outline-offset: 2px;
-  border-radius: 2px;
+  border-radius: 4px;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-accent) 70%, transparent),
+    0 0 0 4px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+/* Form controls and buttons: tactile, consistently-eased interaction. The
+   standard easing + sub-160ms timing is the "premium" feel (Linear/Stripe). */
+input,
+textarea,
+select,
+button,
+[role='button'] {
+  transition:
+    color 140ms var(--ease-standard),
+    background-color 140ms var(--ease-standard),
+    border-color 140ms var(--ease-standard),
+    box-shadow 140ms var(--ease-standard),
+    transform 120ms var(--ease-standard);
+}
+
+/* Press feedback: a touch faster than release, very subtle. */
+button:active,
+[role='button']:active {
+  transform: translateY(0.5px) scale(0.99);
+}
+
+/* Bridge interactive primitives — one consistent hover/press/focus treatment
+   for the crew's buttons and chips (border/color set here, not inline, so
+   hover actually wins). */
+.bridge-btn {
+  border: 1px solid var(--color-accent-dim);
+  color: var(--color-accent);
+  background: transparent;
+}
+.bridge-btn:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+.bridge-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.bridge-chip {
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  background: transparent;
+}
+.bridge-chip:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Inputs adopt the accent on focus: border tints up + the soft halo. */
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent) !important;
+}
+
+/* Belt-and-suspenders reduced-motion: any motion not already gated collapses
+   to near-instant. Honors the OS setting everywhere, including streamed UI. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Skip-to-content link — off-screen until focused */

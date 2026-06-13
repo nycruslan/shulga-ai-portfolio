@@ -294,7 +294,11 @@ export default function BridgeDeck({ crew, events, spend, shipped, live, replay,
   const monogram = (actorMeta?.name ?? 'BR').slice(0, 2).toUpperCase();
 
   const stateLabel = replay ? 'REPLAY' : live ? 'LIVE' : 'STANDBY';
-  const stateColor = replay ? '#e2a04a' : live ? 'var(--color-accent)' : 'var(--color-text-subtle)';
+  const stateColor = replay
+    ? 'var(--color-warning)'
+    : live
+      ? 'var(--color-accent)'
+      : 'var(--color-text-subtle)';
 
   return (
     <div
@@ -335,8 +339,14 @@ export default function BridgeDeck({ crew, events, spend, shipped, live, replay,
         >
           <span
             aria-hidden="true"
-            className="font-display pointer-events-none absolute -top-3 right-2 select-none text-[88px] leading-none"
-            style={{ color: 'color-mix(in srgb, var(--color-accent) 7%, transparent)' }}
+            className="font-display pointer-events-none absolute right-2 bottom-0 select-none leading-none"
+            style={{
+              // Fluid so it reads as a watermark on phones instead of clipping
+              // off the top. Anchored to the bottom-right of the viewscreen.
+              fontSize: 'clamp(3rem, 11vw, 5.5rem)',
+              letterSpacing: '-0.04em',
+              color: 'color-mix(in srgb, var(--color-accent) 7%, transparent)',
+            }}
           >
             {monogram}
           </span>
