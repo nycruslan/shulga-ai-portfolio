@@ -32,3 +32,5 @@ pnpm-debug.log*
 
 # Playwright MCP browser-verification artifacts (screenshots, snapshots)
 .playwright-mcp/
+
+.env*

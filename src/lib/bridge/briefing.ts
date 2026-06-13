@@ -16,7 +16,7 @@ import { estimateCostUsd } from './pricing';
 // only use facts from the dossier; project links are validated against real
 // slugs so a hallucinated slug can never become a dead link.
 
-export const CURATOR_MODEL = 'anthropic/claude-sonnet-4-6';
+export const CURATOR_MODEL = 'anthropic/claude-sonnet-4.6';
 
 export type BriefingSectionData = {
   index: number;

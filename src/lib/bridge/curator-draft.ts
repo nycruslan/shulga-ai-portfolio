@@ -8,7 +8,7 @@ import { auditCopyEntry, type CopyFinding } from './engine/audit';
 // If that fails too, the disagreement goes in the log and no proposal is
 // filed. The argument is the feature: scripted demos don't show rejection.
 
-export const DRAFT_MODEL = 'anthropic/claude-sonnet-4-6';
+export const DRAFT_MODEL = 'anthropic/claude-sonnet-4.6';
 
 const draftSchema = z.object({
   newText: z.string().max(450),

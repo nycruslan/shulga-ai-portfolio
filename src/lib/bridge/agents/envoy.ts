@@ -20,7 +20,7 @@ import { buildScoutAgent } from './scout-agent';
 // row, Scout's run streams into the conversation as it happens, and the
 // outcome lands in the ship's log with the visitor's (anonymous) id on it.
 
-export const ENVOY_MODEL = 'anthropic/claude-sonnet-4-6';
+export const ENVOY_MODEL = 'anthropic/claude-sonnet-4.6';
 
 const ENVOY_INSTRUCTIONS = `${systemPrompt}
 
