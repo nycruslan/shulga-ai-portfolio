@@ -168,7 +168,7 @@ function CommsSession({
   return (
     <div className="space-y-3">
       <ol
-        className="max-h-[360px] space-y-3 overflow-y-auto pr-1"
+        className="themed-scroll max-h-[360px] space-y-3 overflow-y-auto pr-1"
         data-lenis-prevent
         aria-live="polite"
         aria-atomic="false"

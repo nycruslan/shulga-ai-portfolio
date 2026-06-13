@@ -253,7 +253,7 @@ export default function BridgeView({ initial }: Props) {
               onScroll={onChannelScroll}
               aria-live="polite"
               aria-atomic="false"
-              className="max-h-[420px] min-h-[280px] space-y-3 overflow-y-auto pr-1"
+              className="themed-scroll max-h-[420px] min-h-[280px] space-y-3 overflow-y-auto pr-1"
               data-lenis-prevent
             >
               {recap && (
@@ -575,7 +575,10 @@ export default function BridgeView({ initial }: Props) {
               >
                 Ship's log — every entry, including the boring ones
               </p>
-              <ol className="max-h-[280px] space-y-2 overflow-y-auto pr-1" data-lenis-prevent>
+              <ol
+                className="themed-scroll max-h-[280px] space-y-2 overflow-y-auto pr-1"
+                data-lenis-prevent
+              >
                 {[...events].reverse().map((e) => (
                   <li key={e.id} className="font-mono text-[11px] leading-relaxed">
                     <span style={{ color: 'var(--color-text-subtle)' }} title={e.createdAt}>
