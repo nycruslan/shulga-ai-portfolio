@@ -1,0 +1,31 @@
+name: Bridge heartbeat
+
+# Keeps the Bridge crew on watch when no one is visiting. GitHub Actions cron
+# is free, so this is the zero-visitor autonomy guarantee: every 3 hours it
+# fires one tick (crew coordination + a log entry), bounded by the daily
+# narration cap and the lease lock. Run it by hand from the Actions tab too.
+
+on:
+  schedule:
+    - cron: '0 */3 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  beat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tick the bridge
+        env:
+          # Override with a repo variable BRIDGE_TICK_URL if the domain differs.
+          URL: ${{ vars.BRIDGE_TICK_URL || 'https://ruslanshulga.com/api/bridge/tick' }}
+          TICK_SECRET: ${{ secrets.TICK_SECRET }}
+        run: |
+          echo "Ticking $URL"
+          status=$(curl -sS -o /tmp/out.json -w '%{http_code}' -X POST "$URL" \
+            -H 'Content-Type: application/json' \
+            -H "x-tick-secret: $TICK_SECRET" \
+            -d '{}')
+          echo "HTTP $status"
+          cat /tmp/out.json || true
+          # A locked/cadence response is a normal no-op, not a failure.
+          if [ "$status" -ge 500 ]; then exit 1; fi

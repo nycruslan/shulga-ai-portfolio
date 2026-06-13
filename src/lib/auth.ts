@@ -19,9 +19,7 @@ export const OWNER = OWNER_EMAIL ?? null;
 
 // Admin is fully optional: only wire Better Auth when its config is present, so
 // the public site builds and serves with none of these set.
-const ready = Boolean(
-  TURSO_DATABASE_URL && TURSO_AUTH_TOKEN && BETTER_AUTH_SECRET && OWNER_EMAIL,
-);
+const ready = Boolean(TURSO_DATABASE_URL && TURSO_AUTH_TOKEN && BETTER_AUTH_SECRET && OWNER_EMAIL);
 
 function build() {
   const baseURL = BETTER_AUTH_URL ?? 'http://localhost:4321';

@@ -184,7 +184,7 @@ export default function HeroShader() {
           (entries) => {
             visible = entries[0]?.isIntersecting ?? true;
           },
-          { threshold: 0.05 }
+          { threshold: 0.05 },
         );
         io.observe(container);
 

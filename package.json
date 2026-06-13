@@ -9,9 +9,17 @@
     "dev": "node --env-file-if-exists=.env node_modules/astro/bin/astro.mjs dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "check": "astro check",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@ai-sdk/react": "^3.0.206",
     "@anthropic-ai/sdk": "^0.100.1",
     "@astrojs/mdx": "^6.0.1",
     "@astrojs/react": "^5.0.6",
@@ -30,6 +38,7 @@
     "@types/react-dom": "^19.2.3",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.0",
+    "ai": "^6.0.204",
     "astro": "^6.3.7",
     "better-auth": "^1.6.14",
     "gsap": "^3.15.0",
@@ -45,7 +54,17 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
-    "typescript": "^6.0.3"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.5.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-astro": "^1.7.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.6.0",
+    "prettier": "^3.8.4",
+    "prettier-plugin-astro": "^0.14.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.0",
+    "vitest": "^4.1.8"
   },
   "overrides": {
     "@vercel/routing-utils": {

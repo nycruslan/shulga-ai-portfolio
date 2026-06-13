@@ -1,0 +1,73 @@
+import { Output, generateText, type LanguageModel } from 'ai';
+import { z } from 'zod';
+import { auditCopyEntry, type CopyFinding } from './engine/audit';
+
+// Curator drafts a revision for a flagged copy entry; Critic (the same
+// deterministic auditor that found the problem) reviews the draft. If the
+// draft still violates, Curator gets exactly one retry with Critic's notes.
+// If that fails too, the disagreement goes in the log and no proposal is
+// filed. The argument is the feature: scripted demos don't show rejection.
+
+export const DRAFT_MODEL = 'anthropic/claude-sonnet-4-6';
+
+const draftSchema = z.object({
+  newText: z.string().max(450),
+});
+
+const DRAFT_SYSTEM = `You are Curator, operations officer of ruslanshulga.com. Rewrite ONE piece of site copy to fix the style findings while preserving its meaning, facts, and voice (confident, direct, dry).
+
+Hard rules:
+- Fix every finding listed. Do not introduce new violations: no em dashes, no "A, B, and C" triplets, no buzzwords (robust, comprehensive, seamless, cutting-edge, innovative, leverage), under 400 characters.
+- Keep every factual claim exactly as it was. Change structure and wording only.
+- Return only the rewritten text.`;
+
+export type DraftOutcome =
+  | {
+      ok: true;
+      newText: string;
+      attempts: number;
+      usage: { inputTokens: number; outputTokens: number };
+    }
+  | {
+      ok: false;
+      reason: string;
+      attempts: number;
+      usage: { inputTokens: number; outputTokens: number };
+    };
+
+export async function draftRevision(options: {
+  key: string;
+  text: string;
+  findings: CopyFinding[];
+  model?: LanguageModel;
+}): Promise<DraftOutcome> {
+  const { key, text, findings, model = DRAFT_MODEL } = options;
+  const usage = { inputTokens: 0, outputTokens: 0 };
+
+  let criticNotes = findings.map((f) => `- [${f.rule}] ${f.note}`).join('\n');
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const result = await generateText({
+        model,
+        system: DRAFT_SYSTEM,
+        prompt: `Copy key: ${key}\nCurrent text:\n"""${text}"""\n\nCritic's findings:\n${criticNotes}`,
+        output: Output.object({ schema: draftSchema }),
+        maxOutputTokens: 400,
+        maxRetries: 1,
+      });
+      usage.inputTokens += result.usage.inputTokens ?? 0;
+      usage.outputTokens += result.usage.outputTokens ?? 0;
+
+      const draft = result.output.newText.trim();
+      const violations = auditCopyEntry(key, draft);
+      if (violations.length === 0 && draft.length > 0) {
+        return { ok: true, newText: draft, attempts: attempt, usage };
+      }
+      criticNotes = violations.map((f) => `- [${f.rule}] ${f.note}`).join('\n');
+    } catch (err) {
+      console.error('[bridge] curator draft failed:', err);
+      return { ok: false, reason: 'The draft call failed.', attempts: attempt, usage };
+    }
+  }
+  return { ok: false, reason: 'Critic rejected the draft twice.', attempts: 2, usage };
+}

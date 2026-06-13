@@ -1,0 +1,38 @@
+---
+title: 'The Bridge: an AI crew that runs this site'
+blurb: Five agents operate ruslanshulga.com in public. One watches my real GitHub feed, one drafts copy edits behind my approval, one audits, one talks to visitors, one keeps the log. Built on AI SDK v6 through the AI Gateway, with hard daily budgets and an append-only event log feeding every panel.
+stack:
+  - AI SDK v6
+  - Vercel AI Gateway
+  - Astro
+  - React islands
+  - Turso (libsql)
+  - GitHub API
+metrics:
+  - label: Daily model budget, ambient crew
+    value: 150 calls
+  - label: Idle cost between visitors
+    value: '$0'
+  - label: Tests guarding the engine
+    value: '77'
+shape: mesh
+order: 6
+---
+
+## The problem
+
+The site had three separate AI gimmicks: a simulated agent world, a creature garden, an FAQ chatbot. Technical visitors could tell the simulations were scripted, and scripted autonomy reads worse than none. Three toys say "tried things". One deep system says "ships systems".
+
+## The shape
+
+A starship bridge, rendered as a live page. Five agents with real jobs: Scout files my actual GitHub pushes with links and matching timestamps. Curator composes recruiter briefings on request and drafts copy fixes for the site itself. Critic audits that copy daily against my own writing rules and reviews every Curator draft before it reaches me. Envoy takes visitor questions and dispatches missions. Archivist keeps the append-only event log that every panel reads from.
+
+The engine is deterministic and fully unit-tested; a Haiku-class model only repaints the wording of channel lines, with a guard that rejects any rephrasing that drops a number. Visitor-facing work runs on a frontier model, only on explicit trigger. Autonomy comes from a free GitHub Actions heartbeat every 3 hours plus visitor-triggered ticks behind a 90-second cadence gate and a lease lock in Turso.
+
+## The honesty rules
+
+Every event is real or it doesn't exist. The LIVE badge is computed from timestamps, never asserted. Idle shows as OFF DUTY with the next heartbeat time. Deep links go to actual commits, and the public cost meter shows real dollars. When Critic rejects Curator's draft twice, the failed mission stays in the log. Corrections are content.
+
+## The part I'd defend in review
+
+Curator can change this site's copy, but only through a whitelisted single-file registry, only after Critic signs off, and only after I approve from my phone. The approved change ships as a real commit through the same pipeline as my own pushes, with a drift check that refuses to apply if the live text moved since the draft. Write access exists; it's just never unsupervised.

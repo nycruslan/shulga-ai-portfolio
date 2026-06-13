@@ -27,14 +27,18 @@ function loadSession(): { messages: Msg[]; msgCount: number } {
         msgCount: typeof data.msgCount === 'number' ? data.msgCount : 0,
       };
     }
-  } catch {}
+  } catch {
+    /* session storage unavailable (private mode) */
+  }
   return { messages: [], msgCount: 0 };
 }
 
 function saveSession(messages: Msg[], msgCount: number) {
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ messages, msgCount }));
-  } catch {}
+  } catch {
+    /* session storage unavailable (private mode) */
+  }
 }
 
 export default function AskMe() {
@@ -49,7 +53,9 @@ export default function AskMe() {
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    function onOpen() { setOpen(true); }
+    function onOpen() {
+      setOpen(true);
+    }
     window.addEventListener('open-ask-me', onOpen as EventListener);
     return () => window.removeEventListener('open-ask-me', onOpen as EventListener);
   }, []);
@@ -58,11 +64,11 @@ export default function AskMe() {
     if (open) {
       document.body.style.overflow = 'hidden';
       // Lenis intercepts wheel events globally — stop it so the background doesn't scroll
-      (window as any).__lenis?.stop();
+      window.__lenis?.stop();
       setTimeout(() => inputRef.current?.focus(), 80);
     } else {
       document.body.style.overflow = '';
-      (window as any).__lenis?.start();
+      window.__lenis?.start();
     }
   }, [open]);
 
@@ -108,7 +114,7 @@ export default function AskMe() {
     function onTab(e: KeyboardEvent) {
       if (e.key !== 'Tab') return;
       const items = root!.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])'
+        'a[href], button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])',
       );
       if (!items.length) return;
       const first = items[0];
@@ -128,110 +134,125 @@ export default function AskMe() {
     };
   }, [open]);
 
-  const send = useCallback(async (userText: string) => {
-    const text = userText.trim();
-    if (!text || generating) return;
+  const send = useCallback(
+    async (userText: string) => {
+      const text = userText.trim();
+      if (!text || generating) return;
 
-    const nextMsgCount = msgCount + 1;
-    setMsgCount(nextMsgCount);
-    setInput('');
+      const nextMsgCount = msgCount + 1;
+      setMsgCount(nextMsgCount);
+      setInput('');
 
-    const history: Msg[] = [...messages, { role: 'user', content: text }];
-    setMessages([...history, { role: 'assistant', content: '' }]);
-    setGenerating(true);
+      const history: Msg[] = [...messages, { role: 'user', content: text }];
+      setMessages([...history, { role: 'assistant', content: '' }]);
+      setGenerating(true);
 
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
 
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // Send plain text history; trace parts are render-only.
-        body: JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })) }),
-        signal: ctrl.signal,
-      });
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // Send plain text history; trace parts are render-only.
+          body: JSON.stringify({
+            messages: history.map(({ role, content }) => ({ role, content })),
+          }),
+          signal: ctrl.signal,
+        });
 
-      if (!res.ok || !res.body) {
-        const errText = res.ok ? 'Empty response' : await res.text().catch(() => 'Request failed');
-        throw new Error(errText);
-      }
+        if (!res.ok || !res.body) {
+          const errText = res.ok
+            ? 'Empty response'
+            : await res.text().catch(() => 'Request failed');
+          throw new Error(errText);
+        }
 
-      // NDJSON stream: text deltas interleaved with live tool-call frames.
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = '';
-      let content = '';
-      const parts: Part[] = [];
+        // NDJSON stream: text deltas interleaved with live tool-call frames.
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        let content = '';
+        const parts: Part[] = [];
 
-      const apply = () => {
-        const contentSnap = content;
-        const partsSnap = parts.map((p) =>
-          p.kind === 'tool' ? { ...p, step: { ...p.step } } : { ...p }
-        );
+        const apply = () => {
+          const contentSnap = content;
+          const partsSnap = parts.map((p) =>
+            p.kind === 'tool' ? { ...p, step: { ...p.step } } : { ...p },
+          );
+          setMessages((prev) => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last?.role === 'assistant') {
+              copy[copy.length - 1] = { ...last, content: contentSnap, parts: partsSnap };
+            }
+            return copy;
+          });
+        };
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            // Stream events from /api/chat, one JSON object per line.
+            let ev:
+              | { t: 'text'; v: string }
+              | { t: 'tool'; name: string }
+              | { t: 'tool_ok'; name: string; detail?: string; input?: Record<string, unknown> }
+              | { t: 'err'; v: string };
+            try {
+              ev = JSON.parse(line);
+            } catch {
+              continue;
+            }
+            if (ev.t === 'text') {
+              content += ev.v;
+              const last = parts[parts.length - 1];
+              if (last?.kind === 'text') last.text += ev.v;
+              else parts.push({ kind: 'text', text: ev.v });
+            } else if (ev.t === 'tool') {
+              parts.push({ kind: 'tool', step: { name: ev.name, done: false } });
+            } else if (ev.t === 'tool_ok') {
+              for (let i = parts.length - 1; i >= 0; i--) {
+                const p = parts[i];
+                if (p.kind === 'tool' && p.step.name === ev.name && !p.step.done) {
+                  p.step.done = true;
+                  p.step.detail = ev.detail;
+                  p.step.input = ev.input;
+                  break;
+                }
+              }
+            } else if (ev.t === 'err') {
+              content += ev.v;
+              parts.push({ kind: 'text', text: ev.v });
+            }
+          }
+          apply();
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         setMessages((prev) => {
           const copy = [...prev];
           const last = copy[copy.length - 1];
-          if (last?.role === 'assistant') {
-            copy[copy.length - 1] = { ...last, content: contentSnap, parts: partsSnap };
+          if (last?.role === 'assistant' && !last.content) {
+            copy[copy.length - 1] = {
+              ...last,
+              content: `Something went wrong. Email ${about.email}.`,
+            };
           }
           return copy;
         });
-      };
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split('\n');
-        buf = lines.pop() ?? '';
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          let ev: any;
-          try {
-            ev = JSON.parse(line);
-          } catch {
-            continue;
-          }
-          if (ev.t === 'text') {
-            content += ev.v;
-            const last = parts[parts.length - 1];
-            if (last?.kind === 'text') last.text += ev.v;
-            else parts.push({ kind: 'text', text: ev.v });
-          } else if (ev.t === 'tool') {
-            parts.push({ kind: 'tool', step: { name: ev.name, done: false } });
-          } else if (ev.t === 'tool_ok') {
-            for (let i = parts.length - 1; i >= 0; i--) {
-              const p = parts[i];
-              if (p.kind === 'tool' && p.step.name === ev.name && !p.step.done) {
-                p.step.done = true;
-                p.step.detail = ev.detail;
-                p.step.input = ev.input;
-                break;
-              }
-            }
-          } else if (ev.t === 'err') {
-            content += ev.v;
-            parts.push({ kind: 'text', text: ev.v });
-          }
-        }
-        apply();
+      } finally {
+        setGenerating(false);
+        abortRef.current = null;
       }
-    } catch (err: any) {
-      if (err?.name === 'AbortError') return;
-      setMessages((prev) => {
-        const copy = [...prev];
-        const last = copy[copy.length - 1];
-        if (last?.role === 'assistant' && !last.content) {
-          copy[copy.length - 1] = { ...last, content: `Something went wrong. Email ${about.email}.` };
-        }
-        return copy;
-      });
-    } finally {
-      setGenerating(false);
-      abortRef.current = null;
-    }
-  }, [messages, generating, msgCount]);
+    },
+    [messages, generating, msgCount],
+  );
 
   const onSubmit = (e: React.SyntheticEvent) => {
     e.preventDefault();
@@ -293,7 +314,9 @@ export default function AskMe() {
       data-lenis-prevent
       role="dialog"
       aria-label="Ask my portfolio"
-      onClick={(e) => { if (e.target === containerRef.current) setOpen(false); }}
+      onClick={(e) => {
+        if (e.target === containerRef.current) setOpen(false);
+      }}
       style={{
         position: 'fixed',
         inset: 0,
@@ -371,7 +394,15 @@ export default function AskMe() {
         <div
           ref={scrollRef}
           className="themed-scroll"
-          style={{ flex: 1, minHeight: 0, overflow: 'auto', overscrollBehavior: 'contain', padding: '18px 20px', fontSize: 14, lineHeight: 1.6 }}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflow: 'auto',
+            overscrollBehavior: 'contain',
+            padding: '18px 20px',
+            fontSize: 14,
+            lineHeight: 1.6,
+          }}
         >
           {messages.length === 0 && <Intro onPick={(p) => send(p)} />}
 
@@ -393,10 +424,12 @@ export default function AskMe() {
                 {m.parts?.length ? (
                   m.parts.map((p, j) =>
                     p.kind === 'text' ? (
-                      <span key={j} style={{ whiteSpace: 'pre-wrap' }}>{p.text}</span>
+                      <span key={j} style={{ whiteSpace: 'pre-wrap' }}>
+                        {p.text}
+                      </span>
                     ) : (
                       <ToolFrame key={j} step={p.step} />
-                    )
+                    ),
                   )
                 ) : (
                   <span style={{ whiteSpace: 'pre-wrap' }}>{m.content}</span>
@@ -490,12 +523,10 @@ export default function AskMe() {
 function Intro({ onPick }: { onPick: (q: string) => void }) {
   return (
     <div style={{ color: '#8a8f98' }}>
-      <p style={{ color: '#e6e7e8', marginBottom: 8 }}>
-        Ask anything about my work.
-      </p>
+      <p style={{ color: '#e6e7e8', marginBottom: 8 }}>Ask anything about my work.</p>
       <p style={{ marginBottom: 18, fontSize: 13 }}>
-        A real agent with real tools. It searches my case studies and checks its own eval
-        scores, and you watch every tool call as it happens. Try one of these:
+        A real agent with real tools. It searches my case studies and checks its own eval scores,
+        and you watch every tool call as it happens. Try one of these:
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {SUGGESTED.map((s) => (
@@ -568,7 +599,12 @@ function ToolFrame({ step }: { step: ToolStep }) {
       <span style={{ color: 'var(--color-text)', whiteSpace: 'nowrap' }}>{step.name}</span>
       {args && (
         <span
-          style={{ opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          style={{
+            opacity: 0.7,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
         >
           “{args}”
         </span>

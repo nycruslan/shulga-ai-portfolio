@@ -9,11 +9,16 @@ import { about } from '../data/about';
 interface Props {
   title?: string;
   description?: string;
+  noindex?: boolean;
+  /** The bridge has its own comms (Envoy); hide the floating widget there. */
+  hideAskMe?: boolean;
 }
 
 const {
   title = 'Ruslan Shulga · AI Platform Engineer',
   description = 'VP Engineering at JPMorgan Chase. I build production AI platforms used by thousands of internal users every day.',
+  noindex = false,
+  hideAskMe = false,
 } = Astro.props;
 
 const siteBase = Astro.site ?? new URL(about.portfolio);
@@ -38,6 +43,7 @@ const personSchema = {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
     <meta name="generator" content={Astro.generator} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="canonical" href={canonical} />
@@ -68,15 +74,19 @@ const personSchema = {
     <a href="#main" class="skip-link">Skip to content</a>
     <div data-preloader aria-hidden="true">
       <span class="preloader-name">
-        {'RUSLAN SHULGA'.split('').map((c, i) => (
-          <span class="preloader-char" style={`--char-delay: ${0.1 + i * 0.03}s`}>{c === ' ' ? ' ' : c}</span>
-        ))}
+        {
+          'RUSLAN SHULGA'.split('').map((c, i) => (
+            <span class="preloader-char" style={`--char-delay: ${0.1 + i * 0.03}s`}>
+              {c === ' ' ? ' ' : c}
+            </span>
+          ))
+        }
       </span>
     </div>
     <slot />
     <CustomCursor client:only="react" />
     <CommandPalette client:only="react" />
-    <AskMe client:only="react" />
+    {!hideAskMe && <AskMe client:only="react" />}
 
     <script>
       // Remove preloader after CSS animation completes (safety + cleanup)
@@ -84,9 +94,14 @@ const personSchema = {
         const el = document.querySelector('[data-preloader]') as HTMLElement | null;
         if (!el) return;
         const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        if (reduced) { el.remove(); return; }
+        if (reduced) {
+          el.remove();
+          return;
+        }
         // CSS animation runs ~2.1s (1.4s delay + 0.7s slide). Remove DOM node after.
-        setTimeout(() => { if (el.parentNode) el.remove(); }, 2500);
+        setTimeout(() => {
+          if (el.parentNode) el.remove();
+        }, 2500);
       }
       cleanPreloader();
       document.addEventListener('astro:after-swap', () => {
@@ -121,12 +136,12 @@ const personSchema = {
       function initLenis() {
         if (lenis) lenis.destroy();
         lenis = null;
-        (window as any).__lenis = null;
+        window.__lenis = null;
         const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         if (reduced) return;
         lenis = new Lenis({ duration: 1.15, smoothWheel: true });
         // expose for GSAP ScrollTrigger sync
-        (window as any).__lenis = lenis;
+        window.__lenis = lenis;
         startRafLoop();
       }
 
@@ -150,7 +165,7 @@ const personSchema = {
             const my = e.clientY - (rect.top + rect.height / 2);
             el.style.transform = `translate(${mx * 0.25}px, ${my * 0.25}px)`;
           },
-          { passive: true }
+          { passive: true },
         );
         document.addEventListener('mouseout', (e) => {
           const el = (e.target as HTMLElement | null)?.closest?.<HTMLElement>('[data-magnetic]');
@@ -172,12 +187,12 @@ const personSchema = {
 `;
       console.log(
         '%c' + ascii,
-        'color: #8a8f98; font-family: monospace; font-size: 11px; line-height: 1.2;'
+        'color: #8a8f98; font-family: monospace; font-size: 11px; line-height: 1.2;',
       );
       console.log(
         '%cif you are reading this we should talk → %cnycruslan@gmail.com',
         'color: #5e6469; font-family: monospace;',
-        'color: #e6e7e8; font-family: monospace; text-decoration: underline;'
+        'color: #e6e7e8; font-family: monospace; text-decoration: underline;',
       );
     </script>
   </body>

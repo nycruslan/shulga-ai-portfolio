@@ -1,0 +1,207 @@
+---
+// Homepage teaser for /bridge. Static (the homepage stays prerendered); the
+// live deck lives on its own page. The constellation is a decorative preview
+// of the crew — pure SVG + CSS, no data, no JS — that echoes the old Substrate
+// nodes-and-connections look the way it used to feel.
+
+type Node = { id: string; x: number; y: number; r: number; center?: boolean };
+
+// Envoy at the hub (it dispatches missions to the others); the rest around it.
+const nodes: Node[] = [
+  { id: 'EN', x: 140, y: 120, r: 14, center: true },
+  { id: 'SC', x: 48, y: 54, r: 11 },
+  { id: 'CU', x: 232, y: 54, r: 11 },
+  { id: 'CR', x: 48, y: 186, r: 11 },
+  { id: 'AR', x: 232, y: 186, r: 11 },
+];
+const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+
+// Hub spokes + a top and bottom ring segment. Each carries flowing pulses.
+const edges: Array<[string, string, number]> = [
+  ['EN', 'SC', 1.8],
+  ['EN', 'CU', 2.0],
+  ['EN', 'CR', 1.7],
+  ['EN', 'AR', 2.1],
+  ['SC', 'CU', 2.6],
+  ['CR', 'AR', 2.4],
+];
+---
+
+<section class="mx-auto max-w-5xl px-6 py-20" style="border-top: 1px solid var(--color-border);">
+  <a href="/bridge" class="group block" data-section-reveal>
+    <div
+      class="relative overflow-hidden rounded-2xl border p-8 transition-colors md:p-12"
+      style="border-color: var(--color-border); background: radial-gradient(120% 100% at 20% 0%, rgba(122,242,160,0.05), transparent 55%), rgba(255,255,255,0.012);"
+    >
+      <div class="grid items-center gap-8 md:grid-cols-[1fr_280px] md:gap-12">
+        <div>
+          <div
+            class="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-xs tracking-widest uppercase"
+            style="color: var(--color-text-subtle);"
+          >
+            <span>
+              <span
+                class="live-dot mr-2 inline-block size-1.5 rounded-full align-middle"
+                style="background: var(--color-accent);"></span>
+              Live
+            </span>
+            <span style="text-transform: none; letter-spacing: normal;"
+              >a crew of agents, on watch right now</span
+            >
+          </div>
+
+          <h2
+            class="font-display mt-5 max-w-3xl text-2xl font-medium md:text-4xl"
+            style="color: var(--color-text); letter-spacing: -0.02em;"
+          >
+            Five AI agents run this site.
+          </h2>
+
+          <p
+            class="mt-4 max-w-2xl text-base leading-relaxed"
+            style="color: var(--color-text-muted);"
+          >
+            One watches my real GitHub feed. One drafts site edits I approve by hand. One audits,
+            one talks to visitors, one keeps the log. Every entry is timestamped and real, down to
+            the dollar meter on their model budget.
+          </p>
+
+          <span
+            class="mt-7 inline-flex items-center gap-2 font-mono text-sm transition-colors group-hover:[color:var(--color-accent)]"
+            style="color: var(--color-text);"
+          >
+            Step onto the Bridge
+            <span aria-hidden="true" class="transition-transform group-hover:translate-x-0.5"
+              >→</span
+            >
+          </span>
+        </div>
+
+        <!-- The crew constellation: nodes with pulses flowing along the links. -->
+        <div class="bridge-constellation mx-auto w-full max-w-[280px]" aria-hidden="true">
+          <svg viewBox="0 0 280 240" class="block h-auto w-full">
+            <defs>
+              <filter id="teaser-glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="1.4" result="b"></feGaussianBlur>
+                <feMerge>
+                  <feMergeNode in="b"></feMergeNode>
+                  <feMergeNode in="SourceGraphic"></feMergeNode>
+                </feMerge>
+              </filter>
+            </defs>
+
+            {
+              edges.map(([a, b, dur], i) => {
+                const na = byId[a];
+                const nb = byId[b];
+                return (
+                  <g>
+                    <line
+                      x1={na.x}
+                      y1={na.y}
+                      x2={nb.x}
+                      y2={nb.y}
+                      stroke="var(--color-border-strong)"
+                      stroke-width="1"
+                    />
+                    <line
+                      class="edge-flow"
+                      x1={na.x}
+                      y1={na.y}
+                      x2={nb.x}
+                      y2={nb.y}
+                      stroke="var(--color-accent)"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      filter="url(#teaser-glow)"
+                      style={`animation-duration:${dur}s; animation-delay:-${(i * 0.4).toFixed(1)}s`}
+                    />
+                  </g>
+                );
+              })
+            }
+
+            {
+              nodes.map((n, i) => (
+                <g>
+                  <circle
+                    class="node-glow"
+                    cx={n.x}
+                    cy={n.y}
+                    r={n.r + 5}
+                    fill="var(--color-accent)"
+                    style={`animation-delay:-${(i * 0.6).toFixed(1)}s`}
+                  />
+                  <circle
+                    cx={n.x}
+                    cy={n.y}
+                    r={n.r}
+                    fill="var(--color-bg)"
+                    stroke={n.center ? 'var(--color-accent)' : 'var(--color-accent-dim)'}
+                    stroke-width={n.center ? 1.6 : 1.2}
+                  />
+                  <text
+                    x={n.x}
+                    y={n.y}
+                    text-anchor="middle"
+                    dominant-baseline="central"
+                    font-size="9"
+                    font-family="var(--font-mono)"
+                    fill={n.center ? 'var(--color-accent)' : 'var(--color-text-muted)'}
+                  >
+                    {n.id}
+                  </text>
+                </g>
+              ))
+            }
+          </svg>
+        </div>
+      </div>
+    </div>
+  </a>
+</section>
+
+<style>
+  /* Pulses flowing along each connection: a short round dash chased along the
+     line by an animated dash offset. */
+  .edge-flow {
+    stroke-dasharray: 0.5 11;
+    animation-name: teaser-flow;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  @keyframes teaser-flow {
+    to {
+      stroke-dashoffset: -11.5;
+    }
+  }
+
+  /* Nodes breathe a soft halo, staggered. */
+  .node-glow {
+    opacity: 0.16;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: teaser-breathe 3.2s ease-in-out infinite;
+  }
+  @keyframes teaser-breathe {
+    0%,
+    100% {
+      opacity: 0.1;
+      transform: scale(0.92);
+    }
+    50% {
+      opacity: 0.26;
+      transform: scale(1.06);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .edge-flow {
+      animation: none;
+    }
+    .node-glow {
+      animation: none;
+      opacity: 0.14;
+    }
+  }
+</style>

@@ -1,9 +1,5 @@
 import type { APIRoute } from 'astro';
-import {
-  CHAT_API_KEY,
-  UPSTASH_REDIS_REST_URL,
-  UPSTASH_REDIS_REST_TOKEN,
-} from 'astro:env/server';
+import { CHAT_API_KEY, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN } from 'astro:env/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
@@ -38,7 +34,9 @@ const tools: Anthropic.Tool[] = [
       "Search Ruslan's resume and case studies for specific passages. Call this when asked about a specific technology, metric, decision, or detail you can't answer confidently from the facts you already have. Returns scored text passages.",
     input_schema: {
       type: 'object',
-      properties: { query: { type: 'string', description: 'Short search terms, e.g. "rerank precision"' } },
+      properties: {
+        query: { type: 'string', description: 'Short search terms, e.g. "rerank precision"' },
+      },
       required: ['query'],
     },
   },
@@ -60,13 +58,18 @@ const tools: Anthropic.Tool[] = [
   },
 ];
 
-async function runTool(name: string, input: Record<string, unknown>): Promise<{ result: string; detail: string }> {
+async function runTool(
+  name: string,
+  input: Record<string, unknown>,
+): Promise<{ result: string; detail: string }> {
   try {
     if (name === 'search_portfolio') {
       const hits = await searchPortfolio(String(input.query ?? ''), 4);
       if (!hits.length) return { result: 'No matches.', detail: 'no matches' };
       return {
-        result: JSON.stringify(hits.map((h) => ({ source: h.source, title: h.title, score: h.score, text: h.text }))),
+        result: JSON.stringify(
+          hits.map((h) => ({ source: h.source, title: h.title, score: h.score, text: h.text })),
+        ),
         detail: `${hits.length} passages · top: ${hits[0].title} (score ${hits[0].score})`,
       };
     }
@@ -115,9 +118,7 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
 
   if (ratelimit) {
     const ip =
-      clientAddress ||
-      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-      'anon';
+      clientAddress || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'anon';
     const { success } = await ratelimit.limit(ip);
     if (!success) {
       return json({ error: `Easy there. Too many questions for now. Email ${about.email}.` }, 429);
@@ -163,7 +164,10 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
           for await (const chunk of stream) {
             if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
               emit({ t: 'text', v: chunk.delta.text });
-            } else if (chunk.type === 'content_block_start' && chunk.content_block.type === 'tool_use') {
+            } else if (
+              chunk.type === 'content_block_start' &&
+              chunk.content_block.type === 'tool_use'
+            ) {
               emit({ t: 'tool', name: chunk.content_block.name });
             }
           }
@@ -175,7 +179,10 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
           const results: Anthropic.ToolResultBlockParam[] = [];
           for (const block of final.content) {
             if (block.type !== 'tool_use') continue;
-            const { result, detail } = await runTool(block.name, block.input as Record<string, unknown>);
+            const { result, detail } = await runTool(
+              block.name,
+              block.input as Record<string, unknown>,
+            );
             emit({ t: 'tool_ok', name: block.name, detail, input: block.input });
             results.push({ type: 'tool_result', tool_use_id: block.id, content: result });
           }
@@ -187,9 +194,13 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
         console.error('[api/chat] stream failed:', err);
         try {
           controller.enqueue(
-            encoder.encode(JSON.stringify({ t: 'err', v: `Something broke. Email ${about.email}.` }) + '\n')
+            encoder.encode(
+              JSON.stringify({ t: 'err', v: `Something broke. Email ${about.email}.` }) + '\n',
+            ),
           );
-        } catch {}
+        } catch {
+          /* stream already closed by the client */
+        }
       } finally {
         controller.close();
       }

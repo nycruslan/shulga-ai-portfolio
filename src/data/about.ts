@@ -10,24 +10,38 @@ export const about = {
   yearsTotal: 9,
   yearsAI: 4,
   summary:
-    "VP Engineering at JPMorgan Chase. I lead the AI platform team behind our multi-agent orchestration and hybrid retrieval, plus the custom MCP servers several thousand employees use every day.",
+    'VP Engineering at JPMorgan Chase. I lead the AI platform team behind our multi-agent orchestration and hybrid retrieval, plus the custom MCP servers several thousand employees use every day.',
   philosophy: [
     "The pieces that matter aren't the models. They're the eval harness and the index strategy per domain.",
     'Agents that fail safely when the model misfires.',
     'Boring infrastructure under agentic AI is what decides whether a system holds up in production.',
   ],
   highlights: [
-    "Leads multi-agent orchestration platform on LangGraph + Claude Agent SDK + OpenAI Agents SDK. Cut manual processing ~55% on flagship workflow.",
-    "Replaced embedding-only RAG with hybrid pipeline (dense + sparse + cross-encoder rerank, Pinecone/Weaviate/pgvector). Lifted retrieval precision ~35%.",
-    "Wrote internal MCP servers used by 8 product teams. Features that took a sprint now take a day or two.",
-    "Built model-agnostic AI gateway over AWS Bedrock, Azure OpenAI, and direct Anthropic API. Centralized failover and cost tracking.",
-    "Multimodal document pipelines on Claude Vision, GPT-4V, and Gemini. First-pass compliance review that used to sit with analysts.",
+    'Leads multi-agent orchestration platform on LangGraph + Claude Agent SDK + OpenAI Agents SDK. Cut manual processing ~55% on flagship workflow.',
+    'Replaced embedding-only RAG with hybrid pipeline (dense + sparse + cross-encoder rerank, Pinecone/Weaviate/pgvector). Lifted retrieval precision ~35%.',
+    'Wrote internal MCP servers used by 8 product teams. Features that took a sprint now take a day or two.',
+    'Built model-agnostic AI gateway over AWS Bedrock, Azure OpenAI, and direct Anthropic API. Centralized failover and cost tracking.',
+    'Multimodal document pipelines on Claude Vision, GPT-4V, and Gemini. First-pass compliance review that used to sit with analysts.',
   ],
   stack: [
-    'Python', 'TypeScript', 'LangGraph', 'LangChain', 'Claude Agent SDK',
-    'OpenAI Agents SDK', 'MCP', 'Pinecone', 'Weaviate', 'pgvector',
-    'AWS Bedrock', 'Azure OpenAI', 'React', 'Next.js', 'Astro',
-    'Node.js', 'Docker', 'Kubernetes',
+    'Python',
+    'TypeScript',
+    'LangGraph',
+    'LangChain',
+    'Claude Agent SDK',
+    'OpenAI Agents SDK',
+    'MCP',
+    'Pinecone',
+    'Weaviate',
+    'pgvector',
+    'AWS Bedrock',
+    'Azure OpenAI',
+    'React',
+    'Next.js',
+    'Astro',
+    'Node.js',
+    'Docker',
+    'Kubernetes',
   ],
   background: [
     'JPMorgan Chase, VP Engineering, AI Platform (4 years).',
@@ -35,7 +49,7 @@ export const about = {
     'PPS Capital, IT operations (2 years).',
   ],
   lookingFor:
-    "Senior or staff-level AI platform roles, founding engineer spots. Places where the work is shipping AI infrastructure that real people depend on.",
+    'Senior or staff-level AI platform roles, founding engineer spots. Places where the work is shipping AI infrastructure that real people depend on.',
 };
 
 export type About = typeof about;

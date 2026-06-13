@@ -27,7 +27,7 @@ export default function CustomCursor() {
       my = e.clientY;
       const target = e.target as HTMLElement | null;
       const interactive = target?.closest(
-        'a, button, [data-magnetic], [role="button"], input, textarea, summary'
+        'a, button, [data-magnetic], [role="button"], input, textarea, summary',
       );
       hovering = !!interactive;
       document.body.dataset.cursorHover = hovering ? '1' : '';

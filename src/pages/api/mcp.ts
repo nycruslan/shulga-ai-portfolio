@@ -14,7 +14,10 @@ export const prerender = false;
 
 const text = (value: unknown) => ({
   content: [
-    { type: 'text' as const, text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) },
+    {
+      type: 'text' as const,
+      text: typeof value === 'string' ? value : JSON.stringify(value, null, 2),
+    },
   ],
 });
 
@@ -28,7 +31,7 @@ const handler = createMcpHandler(
           "Ruslan Shulga's full professional profile: role, experience, highlights with metrics, stack, background, and what he's looking for. Call this first for any question about who he is or what he's done.",
         inputSchema: {},
       },
-      async () => text(about)
+      async () => text(about),
     );
 
     server.registerTool(
@@ -39,7 +42,7 @@ const handler = createMcpHandler(
           'List the selected-work case studies with slugs, blurbs, stacks, and headline metrics. Use get_project for the full write-up.',
         inputSchema: {},
       },
-      async () => text(await listProjects())
+      async () => text(await listProjects()),
     );
 
     server.registerTool(
@@ -48,7 +51,9 @@ const handler = createMcpHandler(
         title: 'Get project case study',
         description:
           'Full case study for one project (problem, architecture, key decisions, what broke). Call when the user asks how something was built.',
-        inputSchema: { slug: z.string().describe('Project slug from list_projects, e.g. "hybrid-rag"') },
+        inputSchema: {
+          slug: z.string().describe('Project slug from list_projects, e.g. "hybrid-rag"'),
+        },
       },
       async ({ slug }) => {
         const project = await getProject(slug);
@@ -57,7 +62,7 @@ const handler = createMcpHandler(
           return text(`No project "${slug}". Available slugs: ${available}`);
         }
         return text(project);
-      }
+      },
     );
 
     server.registerTool(
@@ -71,8 +76,10 @@ const handler = createMcpHandler(
       async ({ query }) => {
         const hits = await searchPortfolio(query, 5);
         if (!hits.length) return text(`No matches for "${query}".`);
-        return text(hits.map((h) => ({ source: h.source, title: h.title, score: h.score, text: h.text })));
-      }
+        return text(
+          hits.map((h) => ({ source: h.source, title: h.title, score: h.score, text: h.text })),
+        );
+      },
     );
 
     server.registerTool(
@@ -85,7 +92,8 @@ const handler = createMcpHandler(
       },
       async () => {
         const [latest] = await readEvalRuns(1);
-        if (!latest) return text('No eval runs published yet. Dashboard: ' + about.portfolio + '/evals');
+        if (!latest)
+          return text('No eval runs published yet. Dashboard: ' + about.portfolio + '/evals');
         return text({
           generated_at: latest.generated_at,
           model: latest.model,
@@ -95,7 +103,7 @@ const handler = createMcpHandler(
           categories: latest.categories,
           dashboard: `${about.portfolio}/evals`,
         });
-      }
+      },
     );
 
     server.registerTool(
@@ -112,7 +120,7 @@ const handler = createMcpHandler(
           github: about.github,
           location: about.location,
           note: 'Email is the fastest channel.',
-        })
+        }),
     );
   },
   {
@@ -129,7 +137,7 @@ const handler = createMcpHandler(
     basePath: '/api',
     maxDuration: 60,
     disableSse: true,
-  }
+  },
 );
 
 export const ALL: APIRoute = ({ request }) => handler(request);

@@ -1,0 +1,258 @@
+---
+export const prerender = false;
+import '../../styles/global.css';
+import { GITHUB_TOKEN } from 'astro:env/server';
+import { turso } from '../../lib/turso-client';
+import { decideProposal, getProposal, listProposals } from '../../lib/bridge/persistence/proposals';
+import { completeMission } from '../../lib/bridge/persistence/missions';
+import { appendEvent } from '../../lib/bridge/persistence/events';
+import { applyCopyChange } from '../../lib/bridge/github-write';
+
+// The captain's sign-off desk. Middleware guarantees only the owner reaches
+// this route. Plain server-rendered forms: works one-handed on a phone, no JS.
+// Approve = one real commit to the copy registry; reject = a public
+// correction-log entry. Both end up in the ship's log either way.
+
+const user = Astro.locals.user;
+let notice: { kind: 'ok' | 'err'; text: string } | null = null;
+
+if (Astro.request.method === 'POST' && turso) {
+  const form = await Astro.request.formData();
+  const id = Number(form.get('id'));
+  const action = String(form.get('action'));
+  const proposal = Number.isFinite(id) ? await getProposal(turso, id) : null;
+  const nowIso = new Date().toISOString();
+  const decidedBy = user?.email ?? 'owner';
+
+  if (!proposal || proposal.status !== 'pending') {
+    notice = { kind: 'err', text: 'That proposal is gone or already decided.' };
+  } else if (action === 'reject') {
+    await decideProposal(turso, proposal.id, { status: 'rejected', decidedBy }, nowIso);
+    if (proposal.missionId) {
+      await completeMission(turso, proposal.missionId, 'failed', 'Rejected by Ruslan.', nowIso);
+    }
+    await appendEvent(
+      turso,
+      {
+        actor: 'engine',
+        kind: 'audit',
+        summary: `Proposal #${proposal.id} (${proposal.key}) rejected by Ruslan. Curator takes the note.`,
+        missionId: proposal.missionId,
+      },
+      nowIso,
+    );
+    notice = { kind: 'ok', text: `Rejected #${proposal.id}. The log shows it.` };
+  } else if (action === 'approve') {
+    if (!GITHUB_TOKEN) {
+      notice = {
+        kind: 'err',
+        text: 'GITHUB_TOKEN (contents: write) is not set, so the commit cannot be made.',
+      };
+    } else {
+      try {
+        const result = await applyCopyChange({
+          token: GITHUB_TOKEN,
+          key: proposal.key,
+          oldText: proposal.oldText,
+          newText: proposal.newText,
+          proposalId: proposal.id,
+        });
+        await decideProposal(
+          turso,
+          proposal.id,
+          { status: 'shipped', decidedBy, commitUrl: result.commitUrl },
+          nowIso,
+        );
+        if (proposal.missionId) {
+          await completeMission(
+            turso,
+            proposal.missionId,
+            'done',
+            `Shipped as ${result.commitSha.slice(0, 7)}.`,
+            nowIso,
+          );
+        }
+        await appendEvent(
+          turso,
+          {
+            actor: 'curator',
+            kind: 'audit',
+            summary: `Change shipped: ${proposal.key} updated. Approved by Ruslan, committed for real.`,
+            link: result.commitUrl,
+            missionId: proposal.missionId,
+          },
+          nowIso,
+        );
+        notice = {
+          kind: 'ok',
+          text: `Shipped #${proposal.id} as a real commit. Vercel will redeploy.`,
+        };
+      } catch (err) {
+        console.error('[bridge] apply failed:', err);
+        await decideProposal(turso, proposal.id, { status: 'failed', decidedBy }, nowIso);
+        if (proposal.missionId) {
+          await completeMission(
+            turso,
+            proposal.missionId,
+            'failed',
+            'GitHub write failed.',
+            nowIso,
+          );
+        }
+        await appendEvent(
+          turso,
+          {
+            actor: 'engine',
+            kind: 'audit',
+            summary: `Proposal #${proposal.id} approval hit a GitHub error. Marked failed; the finding stands.`,
+            missionId: proposal.missionId,
+          },
+          nowIso,
+        );
+        notice = { kind: 'err', text: `GitHub write failed: ${(err as Error).message}` };
+      }
+    }
+  }
+}
+
+const pending = turso ? await listProposals(turso, 'pending') : [];
+const decided = turso ? (await listProposals(turso)).filter((p) => p.status !== 'pending') : [];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Bridge · Sign-off</title>
+    <style is:global>
+      @media (pointer: fine) {
+        html * {
+          cursor: auto !important;
+        }
+      }
+    </style>
+  </head>
+  <body
+    class="min-h-screen px-4 py-8"
+    style="background: var(--color-bg); color: var(--color-text);"
+  >
+    <main class="mx-auto max-w-xl space-y-6">
+      <header>
+        <p
+          class="font-mono text-xs tracking-widest uppercase"
+          style="color: var(--color-text-subtle);"
+        >
+          Bridge · captain's sign-off
+        </p>
+        <h1 class="font-display mt-2 text-2xl">Copy proposals</h1>
+        <p class="mt-1 text-sm" style="color: var(--color-text-muted);">
+          Approve ships one real commit to <code class="font-mono text-xs"
+            >src/data/curated.json</code
+          >. Reject files a public correction. <a
+            href="/admin"
+            class="underline"
+            style="color: var(--color-accent);">back to admin</a
+          >
+        </p>
+      </header>
+
+      {
+        notice && (
+          <p
+            class="rounded-md p-3 font-mono text-xs"
+            style={`border: 1px solid ${notice.kind === 'ok' ? 'var(--color-accent-dim)' : '#e2a04a'}; color: ${notice.kind === 'ok' ? 'var(--color-accent)' : '#e2a04a'};`}
+          >
+            {notice.text}
+          </p>
+        )
+      }
+
+      {
+        pending.length === 0 && (
+          <p class="text-sm" style="color: var(--color-text-subtle);">
+            Nothing awaiting sign-off. The crew will flag it here when Curator drafts a change.
+          </p>
+        )
+      }
+
+      {
+        pending.map((p) => (
+          <section
+            class="space-y-3 rounded-lg p-4"
+            style="background: var(--color-bg-elevated); border: 1px solid var(--color-border);"
+          >
+            <p class="font-mono text-xs" style="color: var(--color-text-subtle);">
+              #{p.id} · {p.key} · attempt {p.attempts} · {p.createdAt.slice(0, 16)}Z
+            </p>
+            <p class="text-sm" style="color: var(--color-text-muted);">
+              <span class="font-mono text-xs" style="color: #e2a04a;">
+                finding:
+              </span>{' '}
+              {p.finding}
+            </p>
+            <div class="space-y-2 text-sm leading-relaxed">
+              <p
+                class="rounded p-2"
+                style="background: var(--color-bg); color: var(--color-text-subtle); text-decoration: line-through;"
+              >
+                {p.oldText}
+              </p>
+              <p class="rounded p-2" style="background: var(--color-bg); color: var(--color-text);">
+                {p.newText}
+              </p>
+            </div>
+            <div class="flex gap-3">
+              <form method="post">
+                <input type="hidden" name="id" value={p.id} />
+                <input type="hidden" name="action" value="approve" />
+                <button
+                  type="submit"
+                  class="rounded-md px-5 py-2.5 font-mono text-sm"
+                  style="border: 1px solid var(--color-accent-dim); color: var(--color-accent);"
+                >
+                  approve &amp; commit
+                </button>
+              </form>
+              <form method="post">
+                <input type="hidden" name="id" value={p.id} />
+                <input type="hidden" name="action" value="reject" />
+                <button
+                  type="submit"
+                  class="rounded-md px-5 py-2.5 font-mono text-sm"
+                  style="border: 1px solid var(--color-border-strong); color: var(--color-text-muted);"
+                >
+                  reject
+                </button>
+              </form>
+            </div>
+          </section>
+        ))
+      }
+
+      {
+        decided.length > 0 && (
+          <section class="space-y-2">
+            <p
+              class="font-mono text-[10px] tracking-widest uppercase"
+              style="color: var(--color-text-subtle);"
+            >
+              Decided
+            </p>
+            {decided.map((p) => (
+              <p class="font-mono text-xs" style="color: var(--color-text-subtle);">
+                #{p.id} {p.key} · {p.status}
+                {p.commitUrl && (
+                  <a href={p.commitUrl} class="ml-1 underline" style="color: var(--color-accent);">
+                    commit ↗
+                  </a>
+                )}
+              </p>
+            ))}
+          </section>
+        )
+      }
+    </main>
+  </body>
+</html>

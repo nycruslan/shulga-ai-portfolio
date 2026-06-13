@@ -28,11 +28,11 @@ export default function CommandPalette() {
         run: () => window.dispatchEvent(new CustomEvent('open-ask-me')),
       },
       {
-        id: 'substrate',
-        title: 'Enter the Substrate',
-        hint: 'live agent world',
-        keywords: 'substrate agents simulation live crew ship organism orchestration',
-        run: () => location.assign('/substrate'),
+        id: 'bridge',
+        title: 'Step onto the Bridge',
+        hint: 'the AI crew that runs this site',
+        keywords: 'bridge substrate garden agents crew live ship orchestration',
+        run: () => location.assign('/bridge'),
       },
       {
         id: 'work',
@@ -109,7 +109,7 @@ export default function CommandPalette() {
         run: () => window.open('/api/me.json', '_blank'),
       },
     ],
-    []
+    [],
   );
 
   const filtered = useMemo(() => {
@@ -159,7 +159,7 @@ export default function CommandPalette() {
       const root = dialogRef.current;
       if (!root) return;
       const items = root.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])'
+        'a[href], button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])',
       );
       if (!items.length) return;
       const first = items[0];
@@ -233,7 +233,10 @@ export default function CommandPalette() {
             borderBottom: '1px solid #1a1d1f',
           }}
         />
-        <ul className="themed-scroll" style={{ listStyle: 'none', margin: 0, padding: 6, maxHeight: '50vh', overflow: 'auto' }}>
+        <ul
+          className="themed-scroll"
+          style={{ listStyle: 'none', margin: 0, padding: 6, maxHeight: '50vh', overflow: 'auto' }}
+        >
           {filtered.length === 0 && (
             <li style={{ padding: '14px 12px', color: '#787f86', fontSize: 13 }}>No matches.</li>
           )}

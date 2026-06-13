@@ -71,8 +71,12 @@ export default function AdminLogin({ signedIn = false, email: initialEmail = '' 
         <p className="text-center text-sm text-text-muted">
           Signed in as <span className="text-text">{email}</span>
         </p>
-        <button className={PRIMARY} onClick={addPasskey} disabled={busy}>Add a passkey</button>
-        <a className={GHOST + ' text-center'} href="/admin">Open dashboard →</a>
+        <button className={PRIMARY} onClick={addPasskey} disabled={busy}>
+          Add a passkey
+        </button>
+        <a className={GHOST + ' text-center'} href="/admin">
+          Open dashboard →
+        </a>
         <button
           className={SUBTLE}
           disabled={busy}
@@ -80,7 +84,9 @@ export default function AdminLogin({ signedIn = false, email: initialEmail = '' 
             await authClient.signOut();
             location.href = '/admin/login';
           }}
-        >Sign out</button>
+        >
+          Sign out
+        </button>
         <Feedback note={note} />
       </div>
     );
@@ -89,12 +95,17 @@ export default function AdminLogin({ signedIn = false, email: initialEmail = '' 
   // Signed out: passkey, then email/password, then first-run account creation.
   return (
     <div className="grid gap-3">
-      <button className={PRIMARY} disabled={busy} onClick={() => go('Follow your device prompt…', () => authClient.signIn.passkey())}>
+      <button
+        className={PRIMARY}
+        disabled={busy}
+        onClick={() => go('Follow your device prompt…', () => authClient.signIn.passkey())}
+      >
         Sign in with passkey
       </button>
 
       <div className="flex items-center gap-3 text-[11px] uppercase tracking-wider text-text-subtle">
-        <span className="h-px flex-1 bg-border" /> or email <span className="h-px flex-1 bg-border" />
+        <span className="h-px flex-1 bg-border" /> or email{' '}
+        <span className="h-px flex-1 bg-border" />
       </div>
 
       <form
@@ -104,15 +115,35 @@ export default function AdminLogin({ signedIn = false, email: initialEmail = '' 
           go('Signing in…', () => authClient.signIn.email({ email, password }));
         }}
       >
-        <input className={INPUT} type="email" placeholder="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        <input className={INPUT} type="password" placeholder="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        <button className={GHOST} type="submit" disabled={busy}>Sign in</button>
+        <input
+          className={INPUT}
+          type="email"
+          placeholder="email"
+          autoComplete="username"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+        <input
+          className={INPUT}
+          type="password"
+          placeholder="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+        <button className={GHOST} type="submit" disabled={busy}>
+          Sign in
+        </button>
       </form>
 
       <button
         className={SUBTLE}
         disabled={busy}
-        onClick={() => go('Creating account…', () => authClient.signUp.email({ email, password, name: 'Owner' }))}
+        onClick={() =>
+          go('Creating account…', () => authClient.signUp.email({ email, password, name: 'Owner' }))
+        }
       >
         First time? Create the owner account
       </button>

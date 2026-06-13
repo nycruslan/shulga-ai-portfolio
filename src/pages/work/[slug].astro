@@ -54,28 +54,32 @@ const order = entry.data.order;
         </p>
 
         <div class="mt-8 flex flex-wrap gap-x-5 gap-y-2 font-mono text-xs">
-          {entry.data.stack.map((tech) => (
-            <span style="color: var(--color-text-subtle);">{tech}</span>
-          ))}
+          {
+            entry.data.stack.map((tech) => (
+              <span style="color: var(--color-text-subtle);">{tech}</span>
+            ))
+          }
         </div>
 
-        {entry.data.metrics.length > 0 && (
-          <dl class="mt-10 grid gap-x-10 gap-y-4 sm:grid-cols-2">
-            {entry.data.metrics.map((m) => (
-              <div>
-                <dt
-                  class="font-mono text-xs uppercase tracking-wider"
-                  style="color: var(--color-text-subtle);"
-                >
-                  {m.label}
-                </dt>
-                <dd class="mt-1 font-mono text-lg" style="color: var(--color-text);">
-                  {m.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        )}
+        {
+          entry.data.metrics.length > 0 && (
+            <dl class="mt-10 grid gap-x-10 gap-y-4 sm:grid-cols-2">
+              {entry.data.metrics.map((m) => (
+                <div>
+                  <dt
+                    class="font-mono text-xs uppercase tracking-wider"
+                    style="color: var(--color-text-subtle);"
+                  >
+                    {m.label}
+                  </dt>
+                  <dd class="mt-1 font-mono text-lg" style="color: var(--color-text);">
+                    {m.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )
+        }
       </div>
     </div>
 
@@ -96,4 +100,3 @@ const order = entry.data.order;
     </div>
   </main>
 </Layout>
-

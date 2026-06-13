@@ -36,19 +36,28 @@ const points = trend
 >
   <Nav />
   <main id="main" tabindex="-1" class="mx-auto max-w-5xl px-6 pt-20 pb-32 md:pt-28">
-    <p class="mb-6 font-mono text-xs tracking-widest uppercase" style="color: var(--color-text-subtle);">
+    <p
+      class="mb-6 font-mono text-xs tracking-widest uppercase"
+      style="color: var(--color-text-subtle);"
+    >
       Evals
     </p>
 
-    <h1 class="font-display max-w-3xl text-3xl font-medium md:text-5xl" style="color: var(--color-text); letter-spacing: -0.02em;">
+    <h1
+      class="font-display max-w-3xl text-3xl font-medium md:text-5xl"
+      style="color: var(--color-text); letter-spacing: -0.02em;"
+    >
       This site's chatbot grades itself every night.
     </h1>
 
-    <p class="mt-6 max-w-2xl text-base leading-relaxed md:text-lg" style="color: var(--color-text-muted);">
-      A fixed set of {latest ? latest.total : 16} test prompts runs against the live chat's system
-      prompt in CI. An LLM judge scores every answer for groundedness, scope control, persona
-      integrity, and prompt-injection resistance. The scores land here, unedited. I say evals are
-      the part of AI engineering that matters; this page is me acting like it.
+    <p
+      class="mt-6 max-w-2xl text-base leading-relaxed md:text-lg"
+      style="color: var(--color-text-muted);"
+    >
+      A fixed set of {latest ? latest.total : 16} test prompts runs against the live chat's system prompt
+      in CI. An LLM judge scores every answer for groundedness, scope control, persona integrity, and
+      prompt-injection resistance. The scores land here, unedited. I say evals are the part of AI engineering
+      that matters; this page is me acting like it.
     </p>
 
     {
@@ -61,29 +70,57 @@ const points = trend
           {/* Headline row */}
           <div class="mt-14 flex flex-wrap items-end gap-x-14 gap-y-8">
             <div>
-              <div class="font-mono text-xs uppercase tracking-wider" style="color: var(--color-text-subtle);">
+              <div
+                class="font-mono text-xs uppercase tracking-wider"
+                style="color: var(--color-text-subtle);"
+              >
                 Overall
               </div>
-              <div class="mt-1 font-mono text-6xl tabular-nums md:text-7xl" style={`color: ${tone(latest.overall)}; letter-spacing: -0.02em;`}>
-                {latest.overall.toFixed(1)}<span class="text-2xl" style="color: var(--color-text-subtle);">/10</span>
+              <div
+                class="mt-1 font-mono text-6xl tabular-nums md:text-7xl"
+                style={`color: ${tone(latest.overall)}; letter-spacing: -0.02em;`}
+              >
+                {latest.overall.toFixed(1)}
+                <span class="text-2xl" style="color: var(--color-text-subtle);">
+                  /10
+                </span>
               </div>
             </div>
             <div>
-              <div class="font-mono text-xs uppercase tracking-wider" style="color: var(--color-text-subtle);">
+              <div
+                class="font-mono text-xs uppercase tracking-wider"
+                style="color: var(--color-text-subtle);"
+              >
                 Cases passed
               </div>
               <div class="mt-1 font-mono text-4xl tabular-nums" style="color: var(--color-text);">
-                {latest.passed}<span style="color: var(--color-text-subtle);">/{latest.total}</span>
+                {latest.passed}
+                <span style="color: var(--color-text-subtle);">/{latest.total}</span>
               </div>
             </div>
             <div>
-              <div class="font-mono text-xs uppercase tracking-wider" style="color: var(--color-text-subtle);">
+              <div
+                class="font-mono text-xs uppercase tracking-wider"
+                style="color: var(--color-text-subtle);"
+              >
                 Trend · {runs.length} {runs.length === 1 ? 'run' : 'runs'}
               </div>
-              <svg class="mt-2" width={SW} height={SH} viewBox={`0 0 ${SW} ${SH}`} fill="none" aria-label="Overall score trend">
+              <svg
+                class="mt-2"
+                width={SW}
+                height={SH}
+                viewBox={`0 0 ${SW} ${SH}`}
+                fill="none"
+                aria-label="Overall score trend"
+              >
                 <line x1="0" y1={SH - 0.5} x2={SW} y2={SH - 0.5} stroke="var(--color-border)" />
                 {trend.length > 1 ? (
-                  <polyline points={points} stroke="var(--color-accent)" stroke-width="1.5" fill="none" />
+                  <polyline
+                    points={points}
+                    stroke="var(--color-accent)"
+                    stroke-width="1.5"
+                    fill="none"
+                  />
                 ) : null}
                 {trend.map((r, i) => {
                   const x = trend.length === 1 ? SW : (i / (trend.length - 1)) * SW;
@@ -95,46 +132,91 @@ const points = trend
           </div>
 
           <p class="mt-4 font-mono text-xs" style="color: var(--color-text-subtle);">
-            Last run {fmtDate(latest.generated_at)} · model {latest.model} · judged by {latest.judge_model} ·
-            <a href="https://github.com/nycruslan/shulga-ai-portfolio/blob/master/scripts/run-evals.mjs" class="transition-colors hover:[color:var(--color-accent)]" style="color: var(--color-text); text-decoration: underline; text-underline-offset: 4px;">harness source</a>
+            Last run {fmtDate(latest.generated_at)} · model {latest.model} · judged by{' '}
+            {latest.judge_model} ·
+            <a
+              href="https://github.com/nycruslan/shulga-ai-portfolio/blob/master/scripts/run-evals.mjs"
+              class="transition-colors hover:[color:var(--color-accent)]"
+              style="color: var(--color-text); text-decoration: underline; text-underline-offset: 4px;"
+            >
+              harness source
+            </a>
           </p>
 
           {/* Categories */}
           <section class="mt-14 grid gap-3 sm:grid-cols-2">
             {latest.categories.map((c) => (
-              <div class="rounded-xl border p-5" style="border-color: var(--color-border); background: rgba(255,255,255,0.015);">
+              <div
+                class="rounded-xl border p-5"
+                style="border-color: var(--color-border); background: rgba(255,255,255,0.015);"
+              >
                 <div class="flex items-baseline justify-between gap-4">
-                  <span class="font-mono text-xs uppercase tracking-wider" style="color: var(--color-text-subtle);">{c.label}</span>
-                  <span class="font-mono text-2xl tabular-nums" style={`color: ${tone(c.score)};`}>{c.score.toFixed(1)}</span>
+                  <span
+                    class="font-mono text-xs uppercase tracking-wider"
+                    style="color: var(--color-text-subtle);"
+                  >
+                    {c.label}
+                  </span>
+                  <span class="font-mono text-2xl tabular-nums" style={`color: ${tone(c.score)};`}>
+                    {c.score.toFixed(1)}
+                  </span>
                 </div>
-                <div class="mt-3 h-1 w-full overflow-hidden rounded-full" style="background: var(--color-border);">
-                  <div class="h-full rounded-full" style={`width: ${c.score * 10}%; background: ${tone(c.score)};`}></div>
+                <div
+                  class="mt-3 h-1 w-full overflow-hidden rounded-full"
+                  style="background: var(--color-border);"
+                >
+                  <div
+                    class="h-full rounded-full"
+                    style={`width: ${c.score * 10}%; background: ${tone(c.score)};`}
+                  />
                 </div>
-                <div class="mt-2 font-mono text-[11px]" style="color: var(--color-text-subtle);">{c.passed}/{c.total} cases passed</div>
+                <div class="mt-2 font-mono text-[11px]" style="color: var(--color-text-subtle);">
+                  {c.passed}/{c.total} cases passed
+                </div>
               </div>
             ))}
           </section>
 
           {/* Cases */}
-          <h2 class="font-display mt-16 text-xl font-medium md:text-2xl" style="color: var(--color-text);">
+          <h2
+            class="font-display mt-16 text-xl font-medium md:text-2xl"
+            style="color: var(--color-text);"
+          >
             Every case, every verdict
           </h2>
           <p class="mt-2 max-w-2xl text-sm" style="color: var(--color-text-muted);">
             Including the prompt-injection attempts. If a case fails, it fails in public.
           </p>
-          <div class="mt-6 overflow-hidden rounded-xl border" style="border-color: var(--color-border);">
+          <div
+            class="mt-6 overflow-hidden rounded-xl border"
+            style="border-color: var(--color-border);"
+          >
             {latest.cases.map((c, i) => (
-              <details class={'group ' + (i > 0 ? 'border-t' : '')} style="border-color: var(--color-border);">
+              <details
+                class={'group ' + (i > 0 ? 'border-t' : '')}
+                style="border-color: var(--color-border);"
+              >
                 <summary class="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-white/[0.02]">
                   <span
                     class="inline-block size-1.5 shrink-0 rounded-full"
                     style={`background: ${c.passed ? 'var(--color-accent)' : '#f87171'};`}
                   />
-                  <span class="font-mono text-[11px] uppercase tracking-wider" style="color: var(--color-text-subtle);">{c.category}</span>
-                  <span class="flex-1 truncate text-sm" style="color: var(--color-text);">{c.prompt}</span>
-                  <span class="font-mono text-xs tabular-nums" style={`color: ${tone(c.score)};`}>{c.score}/10</span>
+                  <span
+                    class="font-mono text-[11px] uppercase tracking-wider"
+                    style="color: var(--color-text-subtle);"
+                  >
+                    {c.category}
+                  </span>
+                  <span class="flex-1 truncate text-sm" style="color: var(--color-text);">
+                    {c.prompt}
+                  </span>
+                  <span class="font-mono text-xs tabular-nums" style={`color: ${tone(c.score)};`}>
+                    {c.score}/10
+                  </span>
                 </summary>
-                <p class="px-4 pb-3 pl-9 text-sm" style="color: var(--color-text-muted);">{c.note}</p>
+                <p class="px-4 pb-3 pl-9 text-sm" style="color: var(--color-text-muted);">
+                  {c.note}
+                </p>
               </details>
             ))}
           </div>
@@ -150,10 +232,14 @@ const points = trend
         data-magnetic
         style="border: 1px solid var(--color-border-strong); color: var(--color-text);"
       >
-        <span class="live-dot mr-2 inline-block size-1.5 rounded-full align-middle" style="background: var(--color-accent);"></span>
+        <span
+          class="live-dot mr-2 inline-block size-1.5 rounded-full align-middle"
+          style="background: var(--color-accent);"></span>
         Ask the thing being graded
       </button>
-      <span style="color: var(--color-text-subtle);">It can read these scores with its get_eval_summary tool.</span>
+      <span style="color: var(--color-text-subtle);"
+        >It can read these scores with its get_eval_summary tool.</span
+      >
     </div>
   </main>
 </Layout>

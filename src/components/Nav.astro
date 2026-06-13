@@ -1,9 +1,8 @@
 ---
-// Root-relative so they work from subpages (/evals, /substrate, /work/*) too.
+// Root-relative so they work from subpages (/evals, /bridge, /work/*) too.
 const links = [
   { href: '/#work', label: 'Work' },
-  { href: '/garden', label: 'Garden' },
-  { href: '/substrate', label: 'Substrate' },
+  { href: '/bridge', label: 'Bridge' },
   { href: '/evals', label: 'Evals' },
   { href: '/#contact', label: 'Contact' },
 ];
@@ -25,10 +24,7 @@ const links = [
       {
         links.map((link) => (
           <li>
-            <a
-              href={link.href}
-              class="transition-colors hover:[color:var(--color-text)]"
-            >
+            <a href={link.href} class="transition-colors hover:[color:var(--color-text)]">
               {link.label}
             </a>
           </li>

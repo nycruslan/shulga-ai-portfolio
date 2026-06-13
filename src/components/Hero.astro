@@ -23,89 +23,119 @@ const updated = new Date().toLocaleDateString('en-US', { month: 'long', year: 'n
   </div>
 
   <div class="mx-auto max-w-5xl px-6 pt-32 pb-24 md:pt-44 md:pb-32">
-  <p
-    class="mb-7 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-xs tracking-widest uppercase"
-    style="color: var(--color-text-subtle);"
-    data-hero-reveal="0"
-  >
-    <span>Ruslan Shulga</span>
-    <span
-      class="inline-flex items-center gap-2 rounded-full px-3 py-1 normal-case tracking-wider"
-      style="border: 1px solid var(--color-border); color: var(--color-text-muted);"
+    <p
+      class="mb-7 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-xs tracking-widest uppercase"
+      style="color: var(--color-text-subtle);"
+      data-hero-reveal="0"
     >
-      <span class="live-dot inline-block size-1.5 rounded-full" style="background: var(--color-accent);"></span>
-      Open to senior/staff AI roles
-    </span>
-  </p>
+      <span>Ruslan Shulga</span>
+      <span
+        class="inline-flex items-center gap-2 rounded-full px-3 py-1 normal-case tracking-wider"
+        style="border: 1px solid var(--color-border); color: var(--color-text-muted);"
+      >
+        <span
+          class="live-dot inline-block size-1.5 rounded-full"
+          style="background: var(--color-accent);"></span>
+        Open to senior/staff AI roles
+      </span>
+    </p>
 
-  <h1
-    class="font-display font-medium tracking-tight text-[clamp(2.75rem,7.5vw,6.5rem)] leading-[1.04]"
-    style="color: var(--color-text); letter-spacing: -0.022em;"
-    transition:name="hero-title"
-    data-hero-title
-  >
-    <span class="block" data-line>
-      {['I','build','production','AI'].map((w, i) => (
-        <span class="word-mask"><span class="word" data-word style={`--word-delay: ${1.8 + i * 0.05}s`}>{w}</span></span>
-      ))}
-    </span>
-    <span class="block" data-line>
-      {['platforms','for'].map((w, i) => (
-        <span class="word-mask"><span class="word" data-word style={`--word-delay: ${1.8 + (i + 4) * 0.05}s`}>{w}</span></span>
-      ))}
-    </span>
-    <span class="block" data-line>
-      {['the','enterprise.'].map((w, i) => (
-        <span class="word-mask"><span class="word" data-word style={`--word-delay: ${1.8 + (i + 6) * 0.05}s`}>{w}</span></span>
-      ))}
-    </span>
-  </h1>
-
-  <p
-    class="mt-8 max-w-2xl text-lg leading-relaxed md:text-xl"
-    style="color: var(--color-text-muted);"
-    data-hero-reveal="2"
-  >
-    VP Engineering at JPMorgan Chase. The systems I lead serve several thousand
-    employees a day. Multi-agent orchestration and hybrid retrieval, plus the
-    MCP servers behind them.
-  </p>
-
-  <div class="mt-12 flex flex-wrap items-center gap-3 text-sm font-mono" data-hero-reveal="3">
-    <!-- Primary: filled. One unmistakable action per view. -->
-    <a
-      href="#work"
-      class="magnetic px-5 py-2.5 font-medium transition-colors"
-      data-magnetic
-      style="background: var(--color-text); color: var(--color-bg);"
+    <h1
+      class="font-display font-medium tracking-tight text-[clamp(2.75rem,7.5vw,6.5rem)] leading-[1.04]"
+      style="color: var(--color-text); letter-spacing: -0.022em;"
+      transition:name="hero-title"
+      data-hero-title
     >
-      View work →
-    </a>
-    {/* Secondary: the differentiator. The AI chat gets the live dot. */}
-    <button
-      type="button"
-      class="magnetic px-4 py-2.5 transition-colors"
-      data-magnetic
-      data-open-chat
-      style="border: 1px solid var(--color-border-strong); color: var(--color-text);"
-    >
-      <span class="inline-block size-1.5 rounded-full mr-2 align-middle" style="background: var(--color-accent); box-shadow: 0 0 8px var(--color-accent);"></span>
-      Ask my portfolio
-    </button>
-    <!-- Tertiary: plain text. -->
-    <a
-      href="#contact"
-      class="magnetic px-3 py-2.5 transition-colors"
-      data-magnetic
+      <span class="block" data-line>
+        {
+          ['I', 'build', 'production', 'AI'].map((w, i) => (
+            <span class="word-mask">
+              <span class="word" data-word style={`--word-delay: ${1.8 + i * 0.05}s`}>
+                {w}
+              </span>
+            </span>
+          ))
+        }
+      </span>
+      <span class="block" data-line>
+        {
+          ['platforms', 'for'].map((w, i) => (
+            <span class="word-mask">
+              <span class="word" data-word style={`--word-delay: ${1.8 + (i + 4) * 0.05}s`}>
+                {w}
+              </span>
+            </span>
+          ))
+        }
+      </span>
+      <span class="block" data-line>
+        {
+          ['the', 'enterprise.'].map((w, i) => (
+            <span class="word-mask">
+              <span class="word" data-word style={`--word-delay: ${1.8 + (i + 6) * 0.05}s`}>
+                {w}
+              </span>
+            </span>
+          ))
+        }
+      </span>
+    </h1>
+
+    <p
+      class="mt-8 max-w-2xl text-lg leading-relaxed md:text-xl"
       style="color: var(--color-text-muted);"
+      data-hero-reveal="2"
     >
-      Get in touch
-    </a>
-  </div>
+      VP Engineering at JPMorgan Chase. The systems I lead serve several thousand employees a day.
+      Multi-agent orchestration and hybrid retrieval, plus the MCP servers behind them.
+    </p>
 
-  <p class="mt-10 font-mono text-xs" style="color: var(--color-text-subtle);" data-hero-reveal="4">
-    Updated {updated}<span class="hidden md:inline"> · Press <kbd class="px-1.5 py-0.5 rounded border" style="border-color: var(--color-border); color: var(--color-text-muted);">⌘ K</kbd> for commands</span>
-  </p>
+    <div class="mt-12 flex flex-wrap items-center gap-3 text-sm font-mono" data-hero-reveal="3">
+      <!-- Primary: filled. One unmistakable action per view. -->
+      <a
+        href="#work"
+        class="magnetic px-5 py-2.5 font-medium transition-colors"
+        data-magnetic
+        style="background: var(--color-text); color: var(--color-bg);"
+      >
+        View work →
+      </a>
+      {/* Secondary: the differentiator. The AI chat gets the live dot. */}
+      <button
+        type="button"
+        class="magnetic px-4 py-2.5 transition-colors"
+        data-magnetic
+        data-open-chat
+        style="border: 1px solid var(--color-border-strong); color: var(--color-text);"
+      >
+        <span
+          class="inline-block size-1.5 rounded-full mr-2 align-middle"
+          style="background: var(--color-accent); box-shadow: 0 0 8px var(--color-accent);"></span>
+        Ask my portfolio
+      </button>
+      <!-- Tertiary: plain text. -->
+      <a
+        href="#contact"
+        class="magnetic px-3 py-2.5 transition-colors"
+        data-magnetic
+        style="color: var(--color-text-muted);"
+      >
+        Get in touch
+      </a>
+    </div>
+
+    <p
+      class="mt-10 font-mono text-xs"
+      style="color: var(--color-text-subtle);"
+      data-hero-reveal="4"
+    >
+      Updated {updated}<span class="hidden md:inline">
+        · Press <kbd
+          class="px-1.5 py-0.5 rounded border"
+          style="border-color: var(--color-border); color: var(--color-text-muted);">⌘ K</kbd
+        > for commands</span
+      >
+    </p>
   </div>
 </section>
 

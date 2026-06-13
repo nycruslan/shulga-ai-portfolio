@@ -8,7 +8,16 @@ import { readSnapshot } from '../../lib/turso';
 const user = Astro.locals.user;
 const snap = await readSnapshot();
 
-const STATUS_ORDER = ['new', 'reviewed', 'drafted', 'applied', 'screen', 'onsite', 'offer', 'rejected'];
+const STATUS_ORDER = [
+  'new',
+  'reviewed',
+  'drafted',
+  'applied',
+  'screen',
+  'onsite',
+  'offer',
+  'rejected',
+];
 const pipeline = snap
   ? STATUS_ORDER.filter((s) => snap.pipeline[s]).map((s) => [s, snap.pipeline[s]] as const)
   : [];
@@ -26,7 +35,11 @@ const funnel = snap?.funnel;
     <title>JobHunt · Admin</title>
     <!-- Admin has no custom-cursor island, so restore the native cursor that global.css hides. -->
     <style is:global>
-      @media (pointer: fine) { html * { cursor: auto !important; } }
+      @media (pointer: fine) {
+        html * {
+          cursor: auto !important;
+        }
+      }
     </style>
   </head>
   <body class="min-h-screen bg-bg text-text antialiased">
@@ -34,14 +47,19 @@ const funnel = snap?.funnel;
       <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3.5">
         <div class="flex items-baseline gap-3">
           <span class="font-mono text-sm font-medium uppercase tracking-[0.18em]">JobHunt</span>
-          {updated && <span class="hidden text-xs text-text-subtle sm:inline">updated {updated}</span>}
+          {
+            updated && (
+              <span class="hidden text-xs text-text-subtle sm:inline">updated {updated}</span>
+            )
+          }
         </div>
         <div class="flex items-center gap-3 text-xs text-text-muted">
           <span class="hidden sm:inline">{user?.email}</span>
           <button
             id="logout"
             class="rounded-lg border border-border-strong px-3 py-1.5 text-text-muted transition-colors hover:bg-white/[0.04] hover:text-text"
-          >Sign out</button>
+            >Sign out</button
+          >
         </div>
       </div>
     </header>
@@ -50,8 +68,9 @@ const funnel = snap?.funnel;
       {
         !snap ? (
           <p class="mt-8 text-sm text-text-muted">
-            No snapshot yet. Run a feed pull with publishing enabled
-            (<code class="font-mono text-text-subtle">preferences.publish: true</code> + Turso creds).
+            No snapshot yet. Run a feed pull with publishing enabled (
+            <code class="font-mono text-text-subtle">preferences.publish: true</code> + Turso
+            creds).
           </p>
         ) : (
           <>
@@ -99,8 +118,12 @@ const funnel = snap?.funnel;
                 <ul class="space-y-1.5 text-sm">
                   {snap.followups.map((f) => (
                     <li class="flex items-baseline justify-between gap-3 rounded-lg border border-border bg-bg-elevated/40 px-4 py-2.5">
-                      <span>{f.company} <span class="text-text-muted">· {f.title}</span></span>
-                      <span class="shrink-0 font-mono text-xs text-text-subtle">{f.applied_days_ago}d ago</span>
+                      <span>
+                        {f.company} <span class="text-text-muted">· {f.title}</span>
+                      </span>
+                      <span class="shrink-0 font-mono text-xs text-text-subtle">
+                        {f.applied_days_ago}d ago
+                      </span>
                     </li>
                   ))}
                 </ul>

@@ -100,7 +100,7 @@ function DataTable<T>({
   scroll = false,
 }: {
   data: T[];
-  columns: ColumnDef<T, any>[];
+  columns: ColumnDef<T, unknown>[];
   scroll?: boolean;
 }) {
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -236,7 +236,7 @@ function DataTable<T>({
   );
 }
 
-const jobColumns: ColumnDef<Job, any>[] = [
+const jobColumns: ColumnDef<Job, unknown>[] = [
   {
     accessorKey: 'company',
     header: 'Company',
@@ -286,7 +286,7 @@ const jobColumns: ColumnDef<Job, any>[] = [
   },
 ];
 
-const appColumns: ColumnDef<Application, any>[] = [
+const appColumns: ColumnDef<Application, unknown>[] = [
   { accessorKey: 'company', header: 'Company', meta: { className: 'whitespace-nowrap text-text' } },
   { accessorKey: 'title', header: 'Role', meta: { className: 'text-text-muted' } },
   {
@@ -324,7 +324,15 @@ const appColumns: ColumnDef<Application, any>[] = [
   },
 ];
 
-function Section({ title, count, children }: { title: string; count: string; children: React.ReactNode }) {
+function Section({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count: string;
+  children: React.ReactNode;
+}) {
   return (
     <section>
       <h2 className="mb-2.5 mt-9 font-mono text-[11px] uppercase tracking-wider text-text-subtle">

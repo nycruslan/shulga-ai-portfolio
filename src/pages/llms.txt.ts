@@ -17,7 +17,7 @@ This portfolio is machine-readable by design. Three surfaces:
 - **MCP server**: ${about.portfolio}/api/mcp (Streamable HTTP, no auth, read-only). Tools: get_resume, list_projects, get_project, search_portfolio, get_eval_summary, get_contact. Add it to Claude via Settings > Connectors, or to Cursor via mcp.json.
 - **JSON resume**: ${about.portfolio}/api/me.json
 - **Eval dashboard**: ${about.portfolio}/evals (the site's own AI chat is evaluated nightly by an LLM judge; scores are public)
-- **The Substrate**: ${about.portfolio}/substrate (a live, shared multi-agent simulation of an AI platform that visitors watch and perturb)
+- **The Bridge**: ${about.portfolio}/bridge (five AI agents that run this site for real: one watches the live GitHub feed, one drafts site copy behind human approval, one audits, one talks to visitors and dispatches missions, one keeps the log. Every event is real and timestamped.)
 
 ## Work
 

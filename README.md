@@ -40,10 +40,10 @@ npm run dev            # http://localhost:4321
 
 ### Environment variables
 
-| Variable | Required | Purpose |
-| :-- | :-- | :-- |
-| `CHAT_API_KEY` | for chat | Anthropic API key. Without it, `/api/chat` returns 503 and the rest of the site still works. |
-| `UPSTASH_REDIS_REST_URL` | optional | Enables per-IP rate limiting on `/api/chat`. |
+| Variable                   | Required | Purpose                                                                                              |
+| :------------------------- | :------- | :--------------------------------------------------------------------------------------------------- |
+| `CHAT_API_KEY`             | for chat | Anthropic API key. Without it, `/api/chat` returns 503 and the rest of the site still works.         |
+| `UPSTASH_REDIS_REST_URL`   | optional | Enables per-IP rate limiting on `/api/chat`.                                                         |
 | `UPSTASH_REDIS_REST_TOKEN` | optional | Pairs with the URL above. Provision both free via the Upstash integration in the Vercel Marketplace. |
 
 If the Upstash vars are unset, rate limiting is skipped (fine for local dev).
@@ -56,11 +56,11 @@ If the Upstash vars are unset, rate limiting is skipped (fine for local dev).
 
 ## Commands
 
-| Command | Action |
-| :-- | :-- |
-| `npm run dev` | Local dev server |
-| `npm run build` | Production build to `./dist/` |
-| `npm run preview` | Preview the build locally |
+| Command           | Action                        |
+| :---------------- | :---------------------------- |
+| `npm run dev`     | Local dev server              |
+| `npm run build`   | Production build to `./dist/` |
+| `npm run preview` | Preview the build locally     |
 
 ## Deploy
 

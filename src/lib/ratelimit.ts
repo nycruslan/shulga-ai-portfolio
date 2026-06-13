@@ -21,9 +21,5 @@ export function makeLimiter(prefix: string, limiter: Limiter): Ratelimit | null 
 export const slidingWindow = Ratelimit.slidingWindow;
 
 export function clientIp(request: Request, clientAddress?: string): string {
-  return (
-    clientAddress ||
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    'anon'
-  );
+  return clientAddress || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'anon';
 }

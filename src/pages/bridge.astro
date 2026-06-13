@@ -1,0 +1,101 @@
+---
+export const prerender = false;
+import Layout from '../layouts/Layout.astro';
+import Nav from '../components/Nav.astro';
+import BridgeView from '../components/islands/BridgeView.tsx';
+import BriefingRoom from '../components/islands/BriefingRoom.tsx';
+import { AI_GATEWAY_API_KEY } from 'astro:env/server';
+import { turso } from '../lib/turso-client';
+import { bridgeStore } from '../lib/bridge/store';
+import { listEvents } from '../lib/bridge/persistence/events';
+import { daySpend } from '../lib/bridge/persistence/budget';
+import { listMissions } from '../lib/bridge/persistence/missions';
+import { buildBridgeFeed } from '../lib/bridge/feed';
+import curated from '../data/curated.json';
+
+// The Bridge: one AI system instead of three toys. The page server-renders the
+// premise and the first feed payload (instant first paint, no fetch waterfall);
+// the island takes over from there with the live poll + wake tick.
+
+const nowIso = new Date().toISOString();
+const [row, events, spend, missions] = turso
+  ? await Promise.all([
+      bridgeStore.readState(),
+      listEvents(turso, { limit: 40 }),
+      daySpend(turso, nowIso),
+      listMissions(turso, 8),
+    ])
+  : [null, [], { llmCalls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 }, []];
+
+const initial = buildBridgeFeed({
+  row,
+  events,
+  spend,
+  nowIso,
+  missions,
+  commsOnline: !!AI_GATEWAY_API_KEY || import.meta.env.DEV,
+});
+---
+
+<Layout
+  title="The Bridge · Ruslan Shulga"
+  description="Five AI agents run this site: one watches the real GitHub feed, one edits copy behind human approval, one audits, one talks to visitors, one keeps the log. Every event is real and timestamped."
+  hideAskMe
+>
+  <Nav />
+  <main id="main" tabindex="-1" class="mx-auto max-w-6xl px-6 pt-16 pb-28 md:pt-24">
+    <p
+      class="mb-6 font-mono text-xs tracking-widest uppercase"
+      style="color: var(--color-text-subtle);"
+    >
+      The Bridge
+    </p>
+
+    <h1
+      class="font-display max-w-3xl text-3xl font-medium md:text-5xl"
+      style="color: var(--color-text); letter-spacing: -0.02em;"
+    >
+      Five AI agents run this site. You're watching them work.
+    </h1>
+
+    <!-- Editable copy registry: this paragraph is owned by the crew. Critic
+         audits it, Curator drafts fixes, Ruslan approves, and the change ships
+         as a real commit to src/data/curated.json. -->
+    <p
+      class="mt-6 max-w-2xl text-base leading-relaxed md:text-lg"
+      style="color: var(--color-text-muted);"
+    >
+      {curated.bridge_intro}
+    </p>
+
+    <div class="mt-10">
+      <BridgeView client:only="react" initial={initial}>
+        <div
+          slot="fallback"
+          class="rounded-lg p-6 font-mono text-sm"
+          style="background: var(--color-bg-elevated); border: 1px solid var(--color-border); color: var(--color-text-subtle);"
+        >
+          Hailing the bridge…
+        </div>
+      </BridgeView>
+    </div>
+
+    <section
+      class="mt-12 rounded-lg p-5"
+      style="background: var(--color-bg-elevated); border: 1px solid var(--color-border);"
+      aria-label="Briefing room for recruiters"
+    >
+      <p
+        class="mb-4 font-mono text-[10px] tracking-widest uppercase"
+        style="color: var(--color-text-subtle);"
+      >
+        Briefing room — for recruiters, assembled live
+      </p>
+      <BriefingRoom client:only="react" online={initial.commsOnline}>
+        <p slot="fallback" class="font-mono text-xs" style="color: var(--color-text-subtle);">
+          Unlocking the briefing room…
+        </p>
+      </BriefingRoom>
+    </section>
+  </main>
+</Layout>

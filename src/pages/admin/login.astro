@@ -16,7 +16,13 @@ const email = Astro.locals.user?.email ?? '';
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>JobHunt · Admin</title>
-    <style is:global>@media (pointer: fine) { html * { cursor: auto !important; } }</style>
+    <style is:global>
+      @media (pointer: fine) {
+        html * {
+          cursor: auto !important;
+        }
+      }
+    </style>
   </head>
   <body class="flex min-h-screen items-center justify-center bg-bg px-5 text-text antialiased">
     <main class="w-full max-w-sm">

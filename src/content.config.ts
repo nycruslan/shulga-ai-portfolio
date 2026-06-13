@@ -13,7 +13,7 @@ const work = defineCollection({
         z.object({
           label: z.string(),
           value: z.string(),
-        })
+        }),
       )
       .default([]),
     shape: z.enum(['graph', 'layers', 'mesh', 'gateway', 'pipeline']).default('graph'),
