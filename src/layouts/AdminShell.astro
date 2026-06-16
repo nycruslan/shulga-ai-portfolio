@@ -1,0 +1,72 @@
+---
+// Shared chrome for every /admin page: head, a sticky top bar with a
+// back-to-hub link, the owner's email, and sign-out — plus the content slot.
+// Middleware gates all of /admin to the owner. One shell so the three consoles
+// (JobHunt, AI Trader, Bridge) and the hub look and behave identically.
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  /** The hub itself hides its own back link. */
+  home?: boolean;
+}
+const { title, home = false } = Astro.props;
+const user = Astro.locals.user;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{title} · Admin</title>
+    <!-- Admin has no custom-cursor island, so restore the native cursor that global.css hides. -->
+    <style is:global>
+      @media (pointer: fine) {
+        html * {
+          cursor: auto !important;
+        }
+      }
+    </style>
+  </head>
+  <body class="bg-bg text-text min-h-screen antialiased">
+    <header class="border-border bg-bg/80 sticky top-0 z-20 border-b backdrop-blur-md">
+      <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3.5">
+        <div class="flex min-w-0 items-baseline gap-3">
+          {
+            !home && (
+              <a
+                href="/admin"
+                class="text-text-subtle hover:text-text font-mono text-xs transition-colors"
+              >
+                ← Admin
+              </a>
+            )
+          }
+          <span class="truncate font-mono text-sm font-medium tracking-[0.18em] uppercase">
+            {title}
+          </span>
+          <slot name="meta" />
+        </div>
+        <div class="text-text-muted flex items-center gap-3 text-xs">
+          <span class="hidden sm:inline">{user?.email}</span>
+          <button
+            id="admin-logout"
+            class="border-border-strong text-text-muted hover:text-text rounded-lg border px-3 py-1.5 transition-colors hover:bg-white/[0.04]"
+            >Sign out</button
+          >
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-6xl px-5 pt-7 pb-24"><slot /></main>
+
+    <script is:inline>
+      document.getElementById('admin-logout')?.addEventListener('click', async () => {
+        await fetch('/api/auth/sign-out', { method: 'POST' });
+        location.href = '/admin/login';
+      });
+    </script>
+  </body>
+</html>

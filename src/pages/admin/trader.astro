@@ -1,11 +1,10 @@
 ---
 export const prerender = false;
-import '../../styles/global.css';
+import AdminShell from '../../layouts/AdminShell.astro';
 import TraderTables from '../../components/admin/TraderTables.tsx';
 import { readTraderSnapshot } from '../../lib/turso';
 
 // Middleware guarantees only the owner reaches /admin/*.
-const user = Astro.locals.user;
 const snap = await readTraderSnapshot();
 
 const books = snap?.books ?? [];
@@ -26,205 +25,152 @@ const tone = (v: any) =>
 const money = (v: any) => (typeof v === 'number' ? `$${Math.round(v).toLocaleString()}` : '—');
 ---
 
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="robots" content="noindex, nofollow" />
-    <title>AI Trader · Admin</title>
-    <style is:global>
-      @media (pointer: fine) {
-        html * {
-          cursor: auto !important;
-        }
-      }
-    </style>
-  </head>
-  <body class="min-h-screen bg-bg text-text antialiased">
-    <header class="sticky top-0 z-20 border-b border-border bg-bg/80 backdrop-blur-md">
-      <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3.5">
-        <div class="flex items-baseline gap-3">
-          <span class="font-mono text-sm font-medium uppercase tracking-[0.18em]">AI Trader</span>
-          {
-            updated && (
-              <span
-                class={
-                  'hidden text-xs sm:inline ' + (stale ? 'text-amber-300' : 'text-text-subtle')
-                }
-              >
-                {stale ? '⚠ stale · ' : ''}updated {updated}
-              </span>
-            )
-          }
-        </div>
-        <div class="flex items-center gap-3 text-xs text-text-muted">
-          <a
-            href="/admin"
-            class="hidden text-text-muted underline-offset-4 hover:text-text hover:underline sm:inline"
-            >JobHunt →</a
-          >
-          <span class="hidden sm:inline">{user?.email}</span>
-          <button
-            id="logout"
-            class="rounded-lg border border-border-strong px-3 py-1.5 text-text-muted transition-colors hover:bg-white/[0.04] hover:text-text"
-            >Sign out</button
-          >
-        </div>
-      </div>
-    </header>
+<AdminShell title="AI Trader">
+  {
+    updated && (
+      <span
+        slot="meta"
+        class={'hidden text-xs sm:inline ' + (stale ? 'text-amber-300' : 'text-text-subtle')}
+      >
+        {stale ? '⚠ stale · ' : ''}updated {updated}
+      </span>
+    )
+  }
 
-    <main class="mx-auto max-w-6xl px-5 pb-24 pt-7">
-      {
-        !snap ? (
-          <p class="mt-8 text-sm text-text-muted">
-            No snapshot yet. The trading Mac publishes via
-            <code class="font-mono text-text-subtle">publish_trader.py</code> (Turso creds
-            required).
-          </p>
-        ) : (
-          <>
-            {degraded.length > 0 && (
-              <div class="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-2.5 text-xs text-amber-200">
-                ⚠ {degraded.length} section(s) degraded this snapshot:{' '}
-                {degraded.map((d) => d.split(':')[0]).join(', ')}
+  {
+    !snap ? (
+      <p class="mt-8 text-sm text-text-muted">
+        No snapshot yet. The trading Mac publishes via
+        <code class="font-mono text-text-subtle">publish_trader.py</code> (Turso creds required).
+      </p>
+    ) : (
+      <>
+        {degraded.length > 0 && (
+          <div class="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-2.5 text-xs text-amber-200">
+            ⚠ {degraded.length} section(s) degraded this snapshot:{' '}
+            {degraded.map((d) => d.split(':')[0]).join(', ')}
+          </div>
+        )}
+
+        {/* Book KPI cards */}
+        <section class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {books.map((b) => (
+            <div class="rounded-xl border border-border bg-bg-elevated/40 p-4">
+              <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+                {b.name}
               </div>
-            )}
-
-            {/* Book KPI cards */}
-            <section class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {books.map((b) => (
-                <div class="rounded-xl border border-border bg-bg-elevated/40 p-4">
-                  <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-                    {b.name}
-                  </div>
-                  <div class="mt-1 text-2xl font-medium tabular-nums">{money(b.equity)}</div>
-                  <div class="mt-1 flex items-baseline gap-2 text-xs">
-                    <span class={'font-mono tabular-nums ' + tone(b.pnl_pct)}>
-                      {pct(b.pnl_pct)}
-                    </span>
-                    {typeof b.alpha_pct === 'number' && (
-                      <span class="text-text-subtle">α {pct(b.alpha_pct)}</span>
-                    )}
-                  </div>
-                  <div class="mt-2 font-mono text-[11px] text-text-subtle tabular-nums">
-                    {b.open_n ?? 0} open · {b.closed_n ?? 0} closed
-                    {typeof b.win_rate === 'number' ? ` · ${b.win_rate}% win` : ''}
-                  </div>
-                </div>
-              ))}
-            </section>
-
-            {/* Regime + monitor strip */}
-            <section class="mt-4 flex flex-wrap items-center gap-2 text-xs">
-              {regime.label && (
-                <span class="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg-elevated/40 px-3 py-1 text-text-muted">
-                  regime <b class="text-text">{regime.label}</b>
-                  {typeof regime.exposure === 'number' && (
-                    <span class="text-text-subtle">· exp {regime.exposure}</span>
-                  )}
-                </span>
-              )}
-              {typeof regime.vix === 'number' && (
-                <span class="inline-flex rounded-full border border-border bg-bg-elevated/40 px-3 py-1 text-text-muted">
-                  VIX <b class="ml-1 tabular-nums text-text">{regime.vix}</b>
-                </span>
-              )}
-              <span
-                class={
-                  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 ' +
-                  (monitor.alive
-                    ? 'border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-300'
-                    : 'border-rose-500/20 bg-rose-500/[0.06] text-rose-300')
-                }
-              >
-                monitor {monitor.alive ? 'live' : 'down'}
-                {typeof monitor.alerts_24h === 'number' && monitor.alerts_24h > 0 && (
-                  <span class="text-text-subtle">· {monitor.alerts_24h} alerts/24h</span>
+              <div class="mt-1 text-2xl font-medium tabular-nums">{money(b.equity)}</div>
+              <div class="mt-1 flex items-baseline gap-2 text-xs">
+                <span class={'font-mono tabular-nums ' + tone(b.pnl_pct)}>{pct(b.pnl_pct)}</span>
+                {typeof b.alpha_pct === 'number' && (
+                  <span class="text-text-subtle">α {pct(b.alpha_pct)}</span>
                 )}
-              </span>
-            </section>
+              </div>
+              <div class="mt-2 font-mono text-[11px] text-text-subtle tabular-nums">
+                {b.open_n ?? 0} open · {b.closed_n ?? 0} closed
+                {typeof b.win_rate === 'number' ? ` · ${b.win_rate}% win` : ''}
+              </div>
+            </div>
+          ))}
+        </section>
 
-            {/* Learning / go-live panel */}
-            {Object.keys(learning).length > 0 && (
-              <section class="mt-4 rounded-xl border border-border bg-bg-elevated/40 p-4">
-                <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-                  Learning · go-live gate
-                </div>
-                <div class="mt-2 grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
-                  <div class="flex justify-between gap-3">
-                    <span class="text-text-muted">Stock ML</span>
-                    <span class="font-mono text-text">{learning.ml_stock_status ?? '—'}</span>
-                  </div>
-                  <div class="flex justify-between gap-3">
-                    <span class="text-text-muted">Crypto ML</span>
-                    <span class="font-mono text-text">{learning.ml_crypto_status ?? '—'}</span>
-                  </div>
-                  <div class="flex justify-between gap-3">
-                    <span class="text-text-muted">Go-live</span>
-                    <span
-                      class={
-                        'font-mono ' + (learning.go_live_ready ? 'text-emerald-300' : 'text-text')
-                      }
-                    >
-                      {learning.go_live_ready
-                        ? 'READY'
-                        : `${learning.go_live_trades ?? 0}/${learning.go_live_trades_needed ?? 40} trades`}
+        {/* Regime + monitor strip */}
+        <section class="mt-4 flex flex-wrap items-center gap-2 text-xs">
+          {regime.label && (
+            <span class="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg-elevated/40 px-3 py-1 text-text-muted">
+              regime <b class="text-text">{regime.label}</b>
+              {typeof regime.exposure === 'number' && (
+                <span class="text-text-subtle">· exp {regime.exposure}</span>
+              )}
+            </span>
+          )}
+          {typeof regime.vix === 'number' && (
+            <span class="inline-flex rounded-full border border-border bg-bg-elevated/40 px-3 py-1 text-text-muted">
+              VIX <b class="ml-1 tabular-nums text-text">{regime.vix}</b>
+            </span>
+          )}
+          <span
+            class={
+              'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 ' +
+              (monitor.alive
+                ? 'border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-300'
+                : 'border-rose-500/20 bg-rose-500/[0.06] text-rose-300')
+            }
+          >
+            monitor {monitor.alive ? 'live' : 'down'}
+            {typeof monitor.alerts_24h === 'number' && monitor.alerts_24h > 0 && (
+              <span class="text-text-subtle">· {monitor.alerts_24h} alerts/24h</span>
+            )}
+          </span>
+        </section>
+
+        {/* Learning / go-live panel */}
+        {Object.keys(learning).length > 0 && (
+          <section class="mt-4 rounded-xl border border-border bg-bg-elevated/40 p-4">
+            <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+              Learning · go-live gate
+            </div>
+            <div class="mt-2 grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+              <div class="flex justify-between gap-3">
+                <span class="text-text-muted">Stock ML</span>
+                <span class="font-mono text-text">{learning.ml_stock_status ?? '—'}</span>
+              </div>
+              <div class="flex justify-between gap-3">
+                <span class="text-text-muted">Crypto ML</span>
+                <span class="font-mono text-text">{learning.ml_crypto_status ?? '—'}</span>
+              </div>
+              <div class="flex justify-between gap-3">
+                <span class="text-text-muted">Go-live</span>
+                <span
+                  class={'font-mono ' + (learning.go_live_ready ? 'text-emerald-300' : 'text-text')}
+                >
+                  {learning.go_live_ready
+                    ? 'READY'
+                    : `${learning.go_live_trades ?? 0}/${learning.go_live_trades_needed ?? 40} trades`}
+                </span>
+              </div>
+              <div class="flex justify-between gap-3">
+                <span class="text-text-muted">Gate</span>
+                <span class="font-mono text-[11px] text-text-subtle">
+                  {learning.go_live_gate ?? '—'}
+                </span>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Equity charts + tables (interactive island) */}
+        <TraderTables
+          client:load
+          positions={snap.positions ?? []}
+          closed={snap.closed ?? []}
+          equityCurve={snap.equity_curve ?? {}}
+        />
+
+        {/* Reflections */}
+        {reflections.length > 0 && (
+          <>
+            <h2 class="mb-2.5 mt-9 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+              Recent lessons · {reflections.length}
+            </h2>
+            <ul class="space-y-1.5 text-sm">
+              {reflections.map((r) => (
+                <li class="rounded-lg border border-border bg-bg-elevated/40 px-4 py-2.5">
+                  <div class="flex items-baseline justify-between gap-3">
+                    <span class="font-medium">
+                      {r.symbol} <span class="text-text-subtle">· {r.verdict}</span>
+                    </span>
+                    <span class={'shrink-0 font-mono text-xs tabular-nums ' + tone(r.return_pct)}>
+                      {pct(r.return_pct)}
                     </span>
                   </div>
-                  <div class="flex justify-between gap-3">
-                    <span class="text-text-muted">Gate</span>
-                    <span class="font-mono text-[11px] text-text-subtle">
-                      {learning.go_live_gate ?? '—'}
-                    </span>
-                  </div>
-                </div>
-              </section>
-            )}
-
-            {/* Equity charts + tables (interactive island) */}
-            <TraderTables
-              client:load
-              positions={snap.positions ?? []}
-              closed={snap.closed ?? []}
-              equityCurve={snap.equity_curve ?? {}}
-            />
-
-            {/* Reflections */}
-            {reflections.length > 0 && (
-              <>
-                <h2 class="mb-2.5 mt-9 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-                  Recent lessons · {reflections.length}
-                </h2>
-                <ul class="space-y-1.5 text-sm">
-                  {reflections.map((r) => (
-                    <li class="rounded-lg border border-border bg-bg-elevated/40 px-4 py-2.5">
-                      <div class="flex items-baseline justify-between gap-3">
-                        <span class="font-medium">
-                          {r.symbol} <span class="text-text-subtle">· {r.verdict}</span>
-                        </span>
-                        <span
-                          class={'shrink-0 font-mono text-xs tabular-nums ' + tone(r.return_pct)}
-                        >
-                          {pct(r.return_pct)}
-                        </span>
-                      </div>
-                      <p class="mt-1 text-text-muted">{r.lesson}</p>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
+                  <p class="mt-1 text-text-muted">{r.lesson}</p>
+                </li>
+              ))}
+            </ul>
           </>
-        )
-      }
-    </main>
-
-    <script is:inline>
-      document.getElementById('logout')?.addEventListener('click', async () => {
-        await fetch('/api/auth/sign-out', { method: 'POST' });
-        location.href = '/admin/login';
-      });
-    </script>
-  </body>
-</html>
+        )}
+      </>
+    )
+  }
+</AdminShell>

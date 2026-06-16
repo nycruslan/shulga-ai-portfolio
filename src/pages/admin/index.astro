@@ -1,149 +1,98 @@
 ---
 export const prerender = false;
-import '../../styles/global.css';
-import AdminTables from '../../components/admin/AdminTables.tsx';
-import { readSnapshot } from '../../lib/turso';
+import AdminShell from '../../layouts/AdminShell.astro';
+import { turso } from '../../lib/turso-client';
+import { readSnapshot, readTraderSnapshot } from '../../lib/turso';
+import { listProposals } from '../../lib/bridge/persistence/proposals';
 
-// Middleware guarantees only the owner reaches this route.
-const user = Astro.locals.user;
-const snap = await readSnapshot();
+// The owner hub: every admin feature as a card with a live stat, so a glance
+// tells you what needs attention. Middleware guarantees only the owner is here.
+const [job, trade, pending] = await Promise.all([
+  readSnapshot().catch(() => null),
+  readTraderSnapshot().catch(() => null),
+  turso ? listProposals(turso, 'pending').catch(() => []) : Promise.resolve([]),
+]);
 
-const STATUS_ORDER = [
-  'new',
-  'reviewed',
-  'drafted',
-  'applied',
-  'screen',
-  'onsite',
-  'offer',
-  'rejected',
+const tradeUpdated = trade?.generated_at ? new Date(trade.generated_at) : null;
+const tradeStaleMin = tradeUpdated ? (Date.now() - tradeUpdated.getTime()) / 60000 : null;
+
+type Feature = {
+  href: string;
+  label: string;
+  name: string;
+  desc: string;
+  stat: string;
+  alert: boolean;
+};
+
+const features: Feature[] = [
+  {
+    href: '/admin/jobhunt',
+    label: 'Job search',
+    name: 'JobHunt',
+    desc: 'Application pipeline, response funnel, and follow-ups due.',
+    stat: job
+      ? `${job.funnel.applied_total} applied · ${job.funnel.response_rate}% response`
+      : 'no snapshot yet',
+    alert: !!job?.followups?.length,
+  },
+  {
+    href: '/admin/trader',
+    label: 'Markets',
+    name: 'AI Trader',
+    desc: 'Paper books, market regime, learning, and reflections.',
+    stat: tradeUpdated ? `updated ${tradeUpdated.toLocaleString()}` : 'no snapshot yet',
+    alert: tradeStaleMin != null && tradeStaleMin > 25,
+  },
+  {
+    href: '/admin/bridge',
+    label: 'The Bridge',
+    name: 'Copy sign-off',
+    desc: "Approve or reject Curator's site-copy commits.",
+    stat: pending.length ? `${pending.length} awaiting your sign-off` : 'nothing pending',
+    alert: pending.length > 0,
+  },
 ];
-const pipeline = snap
-  ? STATUS_ORDER.filter((s) => snap.pipeline[s]).map((s) => [s, snap.pipeline[s]] as const)
-  : [];
-const updated = snap ? new Date(snap.generated_at).toLocaleString() : null;
-
-const funnel = snap?.funnel;
 ---
 
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="robots" content="noindex, nofollow" />
-    <title>JobHunt · Admin</title>
-    <!-- Admin has no custom-cursor island, so restore the native cursor that global.css hides. -->
-    <style is:global>
-      @media (pointer: fine) {
-        html * {
-          cursor: auto !important;
-        }
-      }
-    </style>
-  </head>
-  <body class="min-h-screen bg-bg text-text antialiased">
-    <header class="sticky top-0 z-20 border-b border-border bg-bg/80 backdrop-blur-md">
-      <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3.5">
-        <div class="flex items-baseline gap-3">
-          <span class="font-mono text-sm font-medium uppercase tracking-[0.18em]">JobHunt</span>
-          {
-            updated && (
-              <span class="hidden text-xs text-text-subtle sm:inline">updated {updated}</span>
-            )
-          }
-        </div>
-        <div class="flex items-center gap-3 text-xs text-text-muted">
-          <a
-            href="/admin/trader"
-            class="hidden text-text-muted underline-offset-4 hover:text-text hover:underline sm:inline"
-            >AI Trader →</a
-          >
-          <span class="hidden sm:inline">{user?.email}</span>
-          <button
-            id="logout"
-            class="rounded-lg border border-border-strong px-3 py-1.5 text-text-muted transition-colors hover:bg-white/[0.04] hover:text-text"
-            >Sign out</button
-          >
-        </div>
-      </div>
-    </header>
+<AdminShell title="Console" home>
+  <div class="mb-8">
+    <h1 class="font-display text-2xl" style="letter-spacing: -0.02em;">Owner console</h1>
+    <p class="text-text-muted mt-1.5 text-sm">Your private tools. Pick a console to open.</p>
+  </div>
 
-    <main class="mx-auto max-w-6xl px-5 pb-24 pt-7">
-      {
-        !snap ? (
-          <p class="mt-8 text-sm text-text-muted">
-            No snapshot yet. Run a feed pull with publishing enabled (
-            <code class="font-mono text-text-subtle">preferences.publish: true</code> + Turso
-            creds).
-          </p>
-        ) : (
-          <>
-            {/* Funnel KPIs */}
-            <section class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              {[
-                ['Applied', funnel?.applied_total ?? 0, ''],
-                ['Responses', funnel?.responded ?? 0, ''],
-                ['Response rate', `${funnel?.response_rate ?? 0}%`, ''],
-                ['Offers', funnel?.offers ?? 0, funnel?.offers ? 'text-emerald-300' : ''],
-              ].map(([label, value, tone]) => (
-                <div class="rounded-xl border border-border bg-bg-elevated/40 p-4">
-                  <div class={'text-2xl font-medium tabular-nums ' + (tone || '')}>{value}</div>
-                  <div class="mt-1 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-                    {label}
-                  </div>
-                </div>
-              ))}
-            </section>
-
-            {/* Pipeline chips */}
-            <section class="mt-4 flex flex-wrap gap-2">
-              {pipeline.map(([s, n]) => (
-                <span class="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg-elevated/40 px-3 py-1 text-xs text-text-muted">
-                  <b class="tabular-nums text-text">{n}</b> {s}
-                </span>
-              ))}
-            </section>
-
-            {/* Data tables (sort + filter) — one React island. */}
-            <AdminTables
-              client:load
-              today={snap.today}
-              matches={snap.matches ?? []}
-              matchesTotal={snap.matches_total ?? 0}
-              applications={snap.applications}
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {
+      features.map((f) => (
+        <a
+          href={f.href}
+          class="group border-border bg-bg-elevated/40 hover:border-accent-dim relative flex flex-col rounded-xl border p-6 transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/[0.02]"
+        >
+          <div class="flex items-center justify-between">
+            <span class="text-text-subtle font-mono text-[10px] tracking-widest uppercase">
+              {f.label}
+            </span>
+            <span
+              aria-hidden="true"
+              class={'size-1.5 rounded-full ' + (f.alert ? 'bg-accent' : 'bg-border-strong')}
+              style={f.alert ? 'box-shadow: 0 0 8px var(--color-accent);' : ''}
             />
-
-            {/* Follow-ups */}
-            {snap.followups.length > 0 && (
-              <>
-                <h2 class="mb-2.5 mt-9 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-                  Follow-ups due · {snap.followups.length}
-                </h2>
-                <ul class="space-y-1.5 text-sm">
-                  {snap.followups.map((f) => (
-                    <li class="flex items-baseline justify-between gap-3 rounded-lg border border-border bg-bg-elevated/40 px-4 py-2.5">
-                      <span>
-                        {f.company} <span class="text-text-muted">· {f.title}</span>
-                      </span>
-                      <span class="shrink-0 font-mono text-xs text-text-subtle">
-                        {f.applied_days_ago}d ago
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </>
-        )
-      }
-    </main>
-
-    <script is:inline>
-      document.getElementById('logout')?.addEventListener('click', async () => {
-        await fetch('/api/auth/sign-out', { method: 'POST' });
-        location.href = '/admin/login';
-      });
-    </script>
-  </body>
-</html>
+          </div>
+          <h2 class="font-display mt-4 text-xl" style="letter-spacing: -0.01em;">
+            {f.name}
+          </h2>
+          <p class="text-text-muted mt-1.5 flex-1 text-sm leading-relaxed">{f.desc}</p>
+          <div class="mt-5 flex items-center justify-between font-mono text-xs">
+            <span class={f.alert ? 'text-accent' : 'text-text-subtle'}>{f.stat}</span>
+            <span
+              aria-hidden="true"
+              class="text-accent transition-transform duration-200 group-hover:translate-x-0.5"
+            >
+              →
+            </span>
+          </div>
+        </a>
+      ))
+    }
+  </div>
+</AdminShell>

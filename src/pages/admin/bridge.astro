@@ -1,6 +1,6 @@
 ---
 export const prerender = false;
-import '../../styles/global.css';
+import AdminShell from '../../layouts/AdminShell.astro';
 import { GITHUB_TOKEN } from 'astro:env/server';
 import { turso } from '../../lib/turso-client';
 import { decideProposal, getProposal, listProposals } from '../../lib/bridge/persistence/proposals';
@@ -119,140 +119,110 @@ const pending = turso ? await listProposals(turso, 'pending') : [];
 const decided = turso ? (await listProposals(turso)).filter((p) => p.status !== 'pending') : [];
 ---
 
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="robots" content="noindex, nofollow" />
-    <title>Bridge · Sign-off</title>
-    <style is:global>
-      @media (pointer: fine) {
-        html * {
-          cursor: auto !important;
-        }
-      }
-    </style>
-  </head>
-  <body
-    class="min-h-screen px-4 py-8"
-    style="background: var(--color-bg); color: var(--color-text);"
-  >
-    <main class="mx-auto max-w-xl space-y-6">
-      <header>
+<AdminShell title="Bridge sign-off">
+  <div class="mx-auto max-w-xl space-y-6">
+    <header>
+      <h1 class="font-display text-2xl" style="letter-spacing: -0.01em;">Copy proposals</h1>
+      <p class="mt-1 text-sm" style="color: var(--color-text-muted);">
+        Approve ships one real commit to <code class="font-mono text-xs">src/data/curated.json</code
+        >. Reject files a public correction.
+      </p>
+    </header>
+
+    {
+      notice && (
         <p
-          class="font-mono text-xs tracking-widest uppercase"
-          style="color: var(--color-text-subtle);"
+          class="rounded-md p-3 font-mono text-xs"
+          style={`border: 1px solid ${notice.kind === 'ok' ? 'var(--color-accent-dim)' : 'var(--color-warning)'}; color: ${notice.kind === 'ok' ? 'var(--color-accent)' : 'var(--color-warning)'};`}
         >
-          Bridge · captain's sign-off
+          {notice.text}
         </p>
-        <h1 class="font-display mt-2 text-2xl">Copy proposals</h1>
-        <p class="mt-1 text-sm" style="color: var(--color-text-muted);">
-          Approve ships one real commit to <code class="font-mono text-xs"
-            >src/data/curated.json</code
-          >. Reject files a public correction. <a
-            href="/admin"
-            class="underline"
-            style="color: var(--color-accent);">back to admin</a
-          >
+      )
+    }
+
+    {
+      pending.length === 0 && (
+        <p class="text-sm" style="color: var(--color-text-subtle);">
+          Nothing awaiting sign-off. The crew will flag it here when Curator drafts a change.
         </p>
-      </header>
+      )
+    }
 
-      {
-        notice && (
-          <p
-            class="rounded-md p-3 font-mono text-xs"
-            style={`border: 1px solid ${notice.kind === 'ok' ? 'var(--color-accent-dim)' : 'var(--color-warning)'}; color: ${notice.kind === 'ok' ? 'var(--color-accent)' : 'var(--color-warning)'};`}
-          >
-            {notice.text}
+    {
+      pending.map((p) => (
+        <section
+          class="space-y-3 rounded-lg p-4"
+          style="background: var(--color-bg-elevated); border: 1px solid var(--color-border);"
+        >
+          <p class="font-mono text-xs" style="color: var(--color-text-subtle);">
+            #{p.id} · {p.key} · attempt {p.attempts} · {p.createdAt.slice(0, 16)}Z
           </p>
-        )
-      }
-
-      {
-        pending.length === 0 && (
-          <p class="text-sm" style="color: var(--color-text-subtle);">
-            Nothing awaiting sign-off. The crew will flag it here when Curator drafts a change.
+          <p class="text-sm" style="color: var(--color-text-muted);">
+            <span class="font-mono text-xs" style="color: var(--color-warning);">
+              finding:
+            </span>{' '}
+            {p.finding}
           </p>
-        )
-      }
-
-      {
-        pending.map((p) => (
-          <section
-            class="space-y-3 rounded-lg p-4"
-            style="background: var(--color-bg-elevated); border: 1px solid var(--color-border);"
-          >
-            <p class="font-mono text-xs" style="color: var(--color-text-subtle);">
-              #{p.id} · {p.key} · attempt {p.attempts} · {p.createdAt.slice(0, 16)}Z
-            </p>
-            <p class="text-sm" style="color: var(--color-text-muted);">
-              <span class="font-mono text-xs" style="color: var(--color-warning);">
-                finding:
-              </span>{' '}
-              {p.finding}
-            </p>
-            <div class="space-y-2 text-sm leading-relaxed">
-              <p
-                class="rounded p-2"
-                style="background: var(--color-bg); color: var(--color-text-subtle); text-decoration: line-through;"
-              >
-                {p.oldText}
-              </p>
-              <p class="rounded p-2" style="background: var(--color-bg); color: var(--color-text);">
-                {p.newText}
-              </p>
-            </div>
-            <div class="flex gap-3">
-              <form method="post">
-                <input type="hidden" name="id" value={p.id} />
-                <input type="hidden" name="action" value="approve" />
-                <button
-                  type="submit"
-                  class="rounded-md px-5 py-2.5 font-mono text-sm"
-                  style="border: 1px solid var(--color-accent-dim); color: var(--color-accent);"
-                >
-                  approve &amp; commit
-                </button>
-              </form>
-              <form method="post">
-                <input type="hidden" name="id" value={p.id} />
-                <input type="hidden" name="action" value="reject" />
-                <button
-                  type="submit"
-                  class="rounded-md px-5 py-2.5 font-mono text-sm"
-                  style="border: 1px solid var(--color-border-strong); color: var(--color-text-muted);"
-                >
-                  reject
-                </button>
-              </form>
-            </div>
-          </section>
-        ))
-      }
-
-      {
-        decided.length > 0 && (
-          <section class="space-y-2">
+          <div class="space-y-2 text-sm leading-relaxed">
             <p
-              class="font-mono text-[10px] tracking-widest uppercase"
-              style="color: var(--color-text-subtle);"
+              class="rounded p-2"
+              style="background: var(--color-bg); color: var(--color-text-subtle); text-decoration: line-through;"
             >
-              Decided
+              {p.oldText}
             </p>
-            {decided.map((p) => (
-              <p class="font-mono text-xs" style="color: var(--color-text-subtle);">
-                #{p.id} {p.key} · {p.status}
-                {p.commitUrl && (
-                  <a href={p.commitUrl} class="ml-1 underline" style="color: var(--color-accent);">
-                    commit ↗
-                  </a>
-                )}
-              </p>
-            ))}
-          </section>
-        )
-      }
-    </main>
-  </body>
-</html>
+            <p class="rounded p-2" style="background: var(--color-bg); color: var(--color-text);">
+              {p.newText}
+            </p>
+          </div>
+          <div class="flex gap-3">
+            <form method="post">
+              <input type="hidden" name="id" value={p.id} />
+              <input type="hidden" name="action" value="approve" />
+              <button
+                type="submit"
+                class="rounded-md px-5 py-2.5 font-mono text-sm"
+                style="border: 1px solid var(--color-accent-dim); color: var(--color-accent);"
+              >
+                approve &amp; commit
+              </button>
+            </form>
+            <form method="post">
+              <input type="hidden" name="id" value={p.id} />
+              <input type="hidden" name="action" value="reject" />
+              <button
+                type="submit"
+                class="rounded-md px-5 py-2.5 font-mono text-sm"
+                style="border: 1px solid var(--color-border-strong); color: var(--color-text-muted);"
+              >
+                reject
+              </button>
+            </form>
+          </div>
+        </section>
+      ))
+    }
+
+    {
+      decided.length > 0 && (
+        <section class="space-y-2">
+          <p
+            class="font-mono text-[10px] tracking-widest uppercase"
+            style="color: var(--color-text-subtle);"
+          >
+            Decided
+          </p>
+          {decided.map((p) => (
+            <p class="font-mono text-xs" style="color: var(--color-text-subtle);">
+              #{p.id} {p.key} · {p.status}
+              {p.commitUrl && (
+                <a href={p.commitUrl} class="ml-1 underline" style="color: var(--color-accent);">
+                  commit ↗
+                </a>
+              )}
+            </p>
+          ))}
+        </section>
+      )
+    }
+  </div>
+</AdminShell>
