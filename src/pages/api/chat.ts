@@ -1,5 +1,10 @@
 import type { APIRoute } from 'astro';
-import { CHAT_API_KEY, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN } from 'astro:env/server';
+import {
+  AI_GATEWAY_API_KEY,
+  CHAT_API_KEY,
+  UPSTASH_REDIS_REST_URL,
+  UPSTASH_REDIS_REST_TOKEN,
+} from 'astro:env/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
@@ -110,8 +115,19 @@ const toolAddendum = `
 
 You have tools: search_portfolio, get_project, get_eval_summary. Visitors SEE your tool calls live (this chat renders its own trace; that transparency is a feature of the site). Use a tool when the question needs specifics beyond the facts above, and answer simple or personal questions directly without tools. Never invent tool output. After using tools, ground your answer in what they returned. Write plain text only: no markdown, no asterisks, no headers (the widget renders raw text).`;
 
+// Route through the Vercel AI Gateway (valid, funded) rather than a raw
+// Anthropic key. Falls back to a direct key only if the gateway isn't set.
+const GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh';
+const apiKey = AI_GATEWAY_API_KEY || CHAT_API_KEY;
+const clientOptions = AI_GATEWAY_API_KEY
+  ? { apiKey: AI_GATEWAY_API_KEY, baseURL: GATEWAY_BASE_URL }
+  : { apiKey: CHAT_API_KEY ?? '' };
+// Gateway uses dotted slugs (anthropic/claude-haiku-4.5); a direct key uses
+// the plain Anthropic id.
+const CHAT_MODEL = AI_GATEWAY_API_KEY ? 'anthropic/claude-haiku-4.5' : 'claude-haiku-4-5';
+
 export const POST: APIRoute = async ({ request, clientAddress }) => {
-  const client = CHAT_API_KEY ? new Anthropic({ apiKey: CHAT_API_KEY }) : null;
+  const client = apiKey ? new Anthropic(clientOptions) : null;
   if (!client) {
     return json({ error: `Chat unavailable. Contact ${about.email}` }, 503);
   }
@@ -154,7 +170,7 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
           // Last round: no tools, force a final grounded answer.
           const allowTools = round < MAX_TOOL_ROUNDS;
           const stream = client.messages.stream({
-            model: 'claude-haiku-4-5',
+            model: CHAT_MODEL,
             max_tokens: 700,
             system: systemPrompt + toolAddendum,
             messages,

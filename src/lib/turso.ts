@@ -119,23 +119,49 @@ export async function readSnapshot(): Promise<Snapshot | null> {
 // assume a field exists. Add/remove data on the publisher side without touching
 // this type and the page still renders.
 export type TraderBook = {
-  name?: string; equity?: number; start?: number; pnl_pct?: number | null;
-  alpha_pct?: number | null; win_rate?: number | null; open_n?: number | null;
-  closed_n?: number | null; reward_risk?: number | null;
-  stop_exits?: number | null; time_exits?: number | null;
+  name?: string;
+  equity?: number;
+  start?: number;
+  pnl_pct?: number | null;
+  alpha_pct?: number | null;
+  win_rate?: number | null;
+  open_n?: number | null;
+  closed_n?: number | null;
+  reward_risk?: number | null;
+  stop_exits?: number | null;
+  time_exits?: number | null;
 };
 export type TraderPosition = {
-  book?: string; symbol?: string; entry?: number | null; current?: number | null;
-  pnl_pct?: number | null; pnl_usd?: number | null; days_held?: number | null;
-  days_left?: number | null; stop_dist_pct?: number | null; pct_of_book?: number | null;
-  conviction?: string | null; source?: string | null; earnings_days?: number | null;
+  book?: string;
+  symbol?: string;
+  entry?: number | null;
+  current?: number | null;
+  pnl_pct?: number | null;
+  pnl_usd?: number | null;
+  days_held?: number | null;
+  days_left?: number | null;
+  stop_dist_pct?: number | null;
+  pct_of_book?: number | null;
+  conviction?: string | null;
+  source?: string | null;
+  earnings_days?: number | null;
   thesis?: string | null;
 };
 export type TraderClosed = {
-  book?: string; symbol?: string; return_pct?: number | null; pnl_usd?: number | null;
-  exit_reason?: string | null; source?: string | null; closed_at?: string | null;
+  book?: string;
+  symbol?: string;
+  return_pct?: number | null;
+  pnl_usd?: number | null;
+  exit_reason?: string | null;
+  source?: string | null;
+  closed_at?: string | null;
 };
-export type EquityPoint = { t?: string; equity?: number | null; ret_pct?: number | null; bench_pct?: number | null };
+export type EquityPoint = {
+  t?: string;
+  equity?: number | null;
+  ret_pct?: number | null;
+  bench_pct?: number | null;
+};
 export type TraderSnapshot = {
   schema_version?: number;
   generated_at?: string;
@@ -145,7 +171,13 @@ export type TraderSnapshot = {
   closed?: TraderClosed[];
   equity_curve?: Record<string, EquityPoint[]>;
   learning?: Record<string, unknown>;
-  reflections?: Array<{ symbol?: string; verdict?: string; lesson?: string; return_pct?: number | null; created_at?: string }>;
+  reflections?: Array<{
+    symbol?: string;
+    verdict?: string;
+    lesson?: string;
+    return_pct?: number | null;
+    created_at?: string;
+  }>;
   regime?: Record<string, unknown>;
   monitor?: Record<string, unknown>;
 };

@@ -18,6 +18,6 @@ jobs:
       - run: npm ci
       - run: node scripts/run-evals.mjs
         env:
-          CHAT_API_KEY: ${{ secrets.CHAT_API_KEY }}
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}

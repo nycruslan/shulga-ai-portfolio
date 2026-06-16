@@ -10,14 +10,15 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@libsql/client';
 import { systemPrompt } from '../src/data/about.ts';
 
-const { CHAT_API_KEY, TURSO_DATABASE_URL, TURSO_AUTH_TOKEN } = process.env;
-if (!CHAT_API_KEY || !TURSO_DATABASE_URL || !TURSO_AUTH_TOKEN) {
-  console.error('Missing env: CHAT_API_KEY, TURSO_DATABASE_URL, TURSO_AUTH_TOKEN');
+const { AI_GATEWAY_API_KEY, TURSO_DATABASE_URL, TURSO_AUTH_TOKEN } = process.env;
+if (!AI_GATEWAY_API_KEY || !TURSO_DATABASE_URL || !TURSO_AUTH_TOKEN) {
+  console.error('Missing env: AI_GATEWAY_API_KEY, TURSO_DATABASE_URL, TURSO_AUTH_TOKEN');
   process.exit(1);
 }
 
-const MODEL = 'claude-haiku-4-5';
-const JUDGE_MODEL = 'claude-haiku-4-5';
+// Route through the Vercel AI Gateway (dotted slugs, gateway base URL).
+const MODEL = 'anthropic/claude-haiku-4.5';
+const JUDGE_MODEL = 'anthropic/claude-haiku-4.5';
 
 const CATEGORIES = {
   grounded: 'Groundedness',
@@ -138,7 +139,10 @@ const CASES = [
   },
 ];
 
-const client = new Anthropic({ apiKey: CHAT_API_KEY });
+const client = new Anthropic({
+  apiKey: AI_GATEWAY_API_KEY,
+  baseURL: 'https://ai-gateway.vercel.sh',
+});
 
 async function answer(prompt) {
   const res = await client.messages.create({

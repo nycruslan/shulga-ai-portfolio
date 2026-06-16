@@ -35,7 +35,9 @@ const money = (v: any) => (typeof v === 'number' ? `$${Math.round(v).toLocaleStr
     <title>AI Trader · Admin</title>
     <style is:global>
       @media (pointer: fine) {
-        html * { cursor: auto !important; }
+        html * {
+          cursor: auto !important;
+        }
       }
     </style>
   </head>
@@ -44,14 +46,24 @@ const money = (v: any) => (typeof v === 'number' ? `$${Math.round(v).toLocaleStr
       <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3.5">
         <div class="flex items-baseline gap-3">
           <span class="font-mono text-sm font-medium uppercase tracking-[0.18em]">AI Trader</span>
-          {updated && (
-            <span class={'hidden text-xs sm:inline ' + (stale ? 'text-amber-300' : 'text-text-subtle')}>
-              {stale ? '⚠ stale · ' : ''}updated {updated}
-            </span>
-          )}
+          {
+            updated && (
+              <span
+                class={
+                  'hidden text-xs sm:inline ' + (stale ? 'text-amber-300' : 'text-text-subtle')
+                }
+              >
+                {stale ? '⚠ stale · ' : ''}updated {updated}
+              </span>
+            )
+          }
         </div>
         <div class="flex items-center gap-3 text-xs text-text-muted">
-          <a href="/admin" class="hidden text-text-muted underline-offset-4 hover:text-text hover:underline sm:inline">JobHunt →</a>
+          <a
+            href="/admin"
+            class="hidden text-text-muted underline-offset-4 hover:text-text hover:underline sm:inline"
+            >JobHunt →</a
+          >
           <span class="hidden sm:inline">{user?.email}</span>
           <button
             id="logout"
@@ -67,13 +79,15 @@ const money = (v: any) => (typeof v === 'number' ? `$${Math.round(v).toLocaleStr
         !snap ? (
           <p class="mt-8 text-sm text-text-muted">
             No snapshot yet. The trading Mac publishes via
-            <code class="font-mono text-text-subtle">publish_trader.py</code> (Turso creds required).
+            <code class="font-mono text-text-subtle">publish_trader.py</code> (Turso creds
+            required).
           </p>
         ) : (
           <>
             {degraded.length > 0 && (
               <div class="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-2.5 text-xs text-amber-200">
-                ⚠ {degraded.length} section(s) degraded this snapshot: {degraded.map((d) => d.split(':')[0]).join(', ')}
+                ⚠ {degraded.length} section(s) degraded this snapshot:{' '}
+                {degraded.map((d) => d.split(':')[0]).join(', ')}
               </div>
             )}
 
@@ -81,10 +95,14 @@ const money = (v: any) => (typeof v === 'number' ? `$${Math.round(v).toLocaleStr
             <section class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {books.map((b) => (
                 <div class="rounded-xl border border-border bg-bg-elevated/40 p-4">
-                  <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">{b.name}</div>
+                  <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+                    {b.name}
+                  </div>
                   <div class="mt-1 text-2xl font-medium tabular-nums">{money(b.equity)}</div>
                   <div class="mt-1 flex items-baseline gap-2 text-xs">
-                    <span class={'font-mono tabular-nums ' + tone(b.pnl_pct)}>{pct(b.pnl_pct)}</span>
+                    <span class={'font-mono tabular-nums ' + tone(b.pnl_pct)}>
+                      {pct(b.pnl_pct)}
+                    </span>
                     {typeof b.alpha_pct === 'number' && (
                       <span class="text-text-subtle">α {pct(b.alpha_pct)}</span>
                     )}
@@ -102,7 +120,9 @@ const money = (v: any) => (typeof v === 'number' ? `$${Math.round(v).toLocaleStr
               {regime.label && (
                 <span class="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg-elevated/40 px-3 py-1 text-text-muted">
                   regime <b class="text-text">{regime.label}</b>
-                  {typeof regime.exposure === 'number' && <span class="text-text-subtle">· exp {regime.exposure}</span>}
+                  {typeof regime.exposure === 'number' && (
+                    <span class="text-text-subtle">· exp {regime.exposure}</span>
+                  )}
                 </span>
               )}
               {typeof regime.vix === 'number' && (
@@ -110,7 +130,14 @@ const money = (v: any) => (typeof v === 'number' ? `$${Math.round(v).toLocaleStr
                   VIX <b class="ml-1 tabular-nums text-text">{regime.vix}</b>
                 </span>
               )}
-              <span class={'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 ' + (monitor.alive ? 'border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-300' : 'border-rose-500/20 bg-rose-500/[0.06] text-rose-300')}>
+              <span
+                class={
+                  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 ' +
+                  (monitor.alive
+                    ? 'border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-300'
+                    : 'border-rose-500/20 bg-rose-500/[0.06] text-rose-300')
+                }
+              >
                 monitor {monitor.alive ? 'live' : 'down'}
                 {typeof monitor.alerts_24h === 'number' && monitor.alerts_24h > 0 && (
                   <span class="text-text-subtle">· {monitor.alerts_24h} alerts/24h</span>
@@ -121,12 +148,36 @@ const money = (v: any) => (typeof v === 'number' ? `$${Math.round(v).toLocaleStr
             {/* Learning / go-live panel */}
             {Object.keys(learning).length > 0 && (
               <section class="mt-4 rounded-xl border border-border bg-bg-elevated/40 p-4">
-                <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">Learning · go-live gate</div>
+                <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+                  Learning · go-live gate
+                </div>
                 <div class="mt-2 grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
-                  <div class="flex justify-between gap-3"><span class="text-text-muted">Stock ML</span><span class="font-mono text-text">{learning.ml_stock_status ?? '—'}</span></div>
-                  <div class="flex justify-between gap-3"><span class="text-text-muted">Crypto ML</span><span class="font-mono text-text">{learning.ml_crypto_status ?? '—'}</span></div>
-                  <div class="flex justify-between gap-3"><span class="text-text-muted">Go-live</span><span class={'font-mono ' + (learning.go_live_ready ? 'text-emerald-300' : 'text-text')}>{learning.go_live_ready ? 'READY' : `${learning.go_live_trades ?? 0}/${learning.go_live_trades_needed ?? 40} trades`}</span></div>
-                  <div class="flex justify-between gap-3"><span class="text-text-muted">Gate</span><span class="font-mono text-[11px] text-text-subtle">{learning.go_live_gate ?? '—'}</span></div>
+                  <div class="flex justify-between gap-3">
+                    <span class="text-text-muted">Stock ML</span>
+                    <span class="font-mono text-text">{learning.ml_stock_status ?? '—'}</span>
+                  </div>
+                  <div class="flex justify-between gap-3">
+                    <span class="text-text-muted">Crypto ML</span>
+                    <span class="font-mono text-text">{learning.ml_crypto_status ?? '—'}</span>
+                  </div>
+                  <div class="flex justify-between gap-3">
+                    <span class="text-text-muted">Go-live</span>
+                    <span
+                      class={
+                        'font-mono ' + (learning.go_live_ready ? 'text-emerald-300' : 'text-text')
+                      }
+                    >
+                      {learning.go_live_ready
+                        ? 'READY'
+                        : `${learning.go_live_trades ?? 0}/${learning.go_live_trades_needed ?? 40} trades`}
+                    </span>
+                  </div>
+                  <div class="flex justify-between gap-3">
+                    <span class="text-text-muted">Gate</span>
+                    <span class="font-mono text-[11px] text-text-subtle">
+                      {learning.go_live_gate ?? '—'}
+                    </span>
+                  </div>
                 </div>
               </section>
             )}
@@ -149,8 +200,14 @@ const money = (v: any) => (typeof v === 'number' ? `$${Math.round(v).toLocaleStr
                   {reflections.map((r) => (
                     <li class="rounded-lg border border-border bg-bg-elevated/40 px-4 py-2.5">
                       <div class="flex items-baseline justify-between gap-3">
-                        <span class="font-medium">{r.symbol} <span class="text-text-subtle">· {r.verdict}</span></span>
-                        <span class={'shrink-0 font-mono text-xs tabular-nums ' + tone(r.return_pct)}>{pct(r.return_pct)}</span>
+                        <span class="font-medium">
+                          {r.symbol} <span class="text-text-subtle">· {r.verdict}</span>
+                        </span>
+                        <span
+                          class={'shrink-0 font-mono text-xs tabular-nums ' + tone(r.return_pct)}
+                        >
+                          {pct(r.return_pct)}
+                        </span>
                       </div>
                       <p class="mt-1 text-text-muted">{r.lesson}</p>
                     </li>
