@@ -3,6 +3,22 @@ import { about } from '../../data/about';
 
 const shortUrl = (url: string) => url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
 
+// The owner's secret shortcut. Type the Konami code anywhere on the site to be
+// taken to the admin login. It's a convenience, not a backdoor — the passkey
+// is still the real gate.
+const KONAMI = [
+  'ArrowUp',
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'ArrowLeft',
+  'ArrowRight',
+  'b',
+  'a',
+];
+
 type Action = {
   id: string;
   title: string;
@@ -17,9 +33,30 @@ export default function CommandPalette() {
   const [activeIdx, setActiveIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const konamiRef = useRef<string[]>([]);
+  // Set once on this device after a successful owner sign-in. Lets the site
+  // "recognize" the owner and surface a discreet admin entry in ⌘K.
+  const [isOwner] = useState(() => {
+    try {
+      return localStorage.getItem('bridge-owner') === '1';
+    } catch {
+      return false;
+    }
+  });
 
   const actions: Action[] = useMemo(
     () => [
+      ...(isOwner
+        ? [
+            {
+              id: 'admin',
+              title: 'Owner admin',
+              hint: '/admin',
+              keywords: 'admin owner dashboard jobhunt bridge proposals sign-off',
+              run: () => location.assign('/admin'),
+            },
+          ]
+        : []),
       {
         id: 'chat',
         title: 'Ask my portfolio',
@@ -109,7 +146,7 @@ export default function CommandPalette() {
         run: () => window.open('/api/me.json', '_blank'),
       },
     ],
-    [],
+    [isOwner],
   );
 
   const filtered = useMemo(() => {
@@ -120,6 +157,15 @@ export default function CommandPalette() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Konami code → owner shortcut to the admin login (works anywhere).
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      konamiRef.current = [...konamiRef.current, k].slice(-KONAMI.length);
+      if (konamiRef.current.join() === KONAMI.join()) {
+        konamiRef.current = [];
+        flash('🔓 Owner access — opening the admin bridge');
+        setTimeout(() => location.assign('/admin/login'), 750);
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setOpen((v) => !v);

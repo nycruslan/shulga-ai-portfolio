@@ -39,7 +39,15 @@ export default function AdminLogin({ signedIn = false, email: initialEmail = '' 
     try {
       const { error } = await fn();
       if (error) setNote({ text: error.message || 'Failed', error: true });
-      else location.href = '/admin';
+      else {
+        // Remember the owner on this device so ⌘K can surface an admin link.
+        try {
+          localStorage.setItem('bridge-owner', '1');
+        } catch {
+          /* private mode — the Konami shortcut still works */
+        }
+        location.href = '/admin';
+      }
     } catch (e) {
       setNote({ text: e instanceof Error ? e.message : 'Failed', error: true });
     } finally {
