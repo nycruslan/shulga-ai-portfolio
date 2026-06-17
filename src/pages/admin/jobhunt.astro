@@ -1,38 +1,16 @@
 ---
 export const prerender = false;
 import AdminShell from '../../layouts/AdminShell.astro';
-import AdminTables from '../../components/admin/AdminTables.tsx';
+import JobHuntDashboard from '../../components/admin/JobHuntDashboard.tsx';
 import { readSnapshot } from '../../lib/turso';
 
-// Middleware guarantees only the owner reaches this route.
+// Middleware guarantees only the owner reaches this route. Never cache: the
+// dashboard reflects the latest publish from the jobhunt tool.
+Astro.response.headers.set('Cache-Control', 'no-store');
 const snap = await readSnapshot();
-
-const STATUS_ORDER = [
-  'new',
-  'reviewed',
-  'drafted',
-  'applied',
-  'screen',
-  'onsite',
-  'offer',
-  'rejected',
-];
-const pipeline = snap
-  ? STATUS_ORDER.filter((s) => snap.pipeline[s]).map((s) => [s, snap.pipeline[s]] as const)
-  : [];
-const updated = snap ? new Date(snap.generated_at).toLocaleString() : null;
-const funnel = snap?.funnel;
 ---
 
 <AdminShell title="JobHunt">
-  {
-    updated && (
-      <span slot="meta" class="text-text-subtle hidden text-xs sm:inline">
-        updated {updated}
-      </span>
-    )
-  }
-
   {
     !snap ? (
       <p class="text-text-muted mt-8 text-sm">
@@ -40,63 +18,7 @@ const funnel = snap?.funnel;
         <code class="text-text-subtle font-mono">preferences.publish: true</code> + Turso creds).
       </p>
     ) : (
-      <>
-        {/* Funnel KPIs */}
-        <section class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {[
-            ['Applied', funnel?.applied_total ?? 0, ''],
-            ['Responses', funnel?.responded ?? 0, ''],
-            ['Response rate', `${funnel?.response_rate ?? 0}%`, ''],
-            ['Offers', funnel?.offers ?? 0, funnel?.offers ? 'text-emerald-300' : ''],
-          ].map(([label, value, tone]) => (
-            <div class="border-border bg-bg-elevated/40 rounded-xl border p-4">
-              <div class={'text-2xl font-medium tabular-nums ' + (tone || '')}>{value}</div>
-              <div class="text-text-subtle mt-1 font-mono text-[11px] tracking-wider uppercase">
-                {label}
-              </div>
-            </div>
-          ))}
-        </section>
-
-        {/* Pipeline chips */}
-        <section class="mt-4 flex flex-wrap gap-2">
-          {pipeline.map(([s, n]) => (
-            <span class="border-border bg-bg-elevated/40 text-text-muted inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs">
-              <b class="text-text tabular-nums">{n}</b> {s}
-            </span>
-          ))}
-        </section>
-
-        {/* Data tables (sort + filter) — one React island. */}
-        <AdminTables
-          client:load
-          today={snap.today}
-          matches={snap.matches ?? []}
-          matchesTotal={snap.matches_total ?? 0}
-          applications={snap.applications}
-        />
-
-        {/* Follow-ups */}
-        {snap.followups.length > 0 && (
-          <>
-            <h2 class="text-text-subtle mt-9 mb-2.5 font-mono text-[11px] tracking-wider uppercase">
-              Follow-ups due · {snap.followups.length}
-            </h2>
-            <ul class="space-y-1.5 text-sm">
-              {snap.followups.map((f) => (
-                <li class="border-border bg-bg-elevated/40 flex items-baseline justify-between gap-3 rounded-lg border px-4 py-2.5">
-                  <span>
-                    {f.company} <span class="text-text-muted">· {f.title}</span>
-                  </span>
-                  <span class="text-text-subtle shrink-0 font-mono text-xs">
-                    {f.applied_days_ago}d ago
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-      </>
+      <JobHuntDashboard client:load initial={snap} />
     )
   }
 </AdminShell>

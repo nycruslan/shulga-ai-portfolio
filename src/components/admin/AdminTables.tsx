@@ -43,6 +43,7 @@ const statusBadge = (s: string) =>
     onsite: 'bg-violet-500/10 text-violet-300 ring-violet-500/20',
     offer: 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/20',
     rejected: 'bg-rose-500/10 text-rose-300 ring-rose-500/20',
+    withdrawn: 'bg-white/5 text-text-subtle ring-white/10',
   })[s] ?? 'bg-white/5 text-text-muted ring-white/10';
 
 // Pull the leading number out of currency-ish strings ("$310k" -> 310) so TC
