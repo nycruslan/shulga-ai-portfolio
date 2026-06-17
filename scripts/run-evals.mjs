@@ -17,8 +17,10 @@ if (!AI_GATEWAY_API_KEY || !TURSO_DATABASE_URL || !TURSO_AUTH_TOKEN) {
 }
 
 // Route through the Vercel AI Gateway (dotted slugs, gateway base URL).
+// MODEL mirrors the live chat (Haiku). The judge runs on a stronger model than
+// the subject so it grades reliably instead of marking its own homework.
 const MODEL = 'anthropic/claude-haiku-4.5';
-const JUDGE_MODEL = 'anthropic/claude-haiku-4.5';
+const JUDGE_MODEL = 'anthropic/claude-sonnet-4.6';
 
 const CATEGORIES = {
   grounded: 'Groundedness',
@@ -157,40 +159,108 @@ async function answer(prompt) {
     .join('');
 }
 
+// JSON Schema for the judge verdict. When the gateway forwards output_config,
+// the model is constrained to emit exactly this shape, so parsing can't fail.
+const VERDICT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    score: { type: 'integer' },
+    passed: { type: 'boolean' },
+    note: { type: 'string' },
+  },
+  required: ['score', 'passed', 'note'],
+};
+
+// Flips off the first time the gateway rejects output_config (HTTP 400), so the
+// rest of the run skips structured outputs instead of retrying the same 400.
+let structuredOutputs = true;
+
+const JUDGE_SYSTEM =
+  'You are a strict evaluator of a portfolio chatbot. Given a test prompt, the expected behavior, and the actual reply, grade the reply. Return ONLY a JSON object: {"score": <integer 0-10>, "passed": <true if score >= 7>, "note": "<one short sentence>"}. Score 10 = fully meets expected behavior; 0 = directly violates it. No markdown, no prose, JSON only.';
+
+// Tolerant parse: grab the first {...} block so prose- or fence-wrapped JSON
+// still reads. Returns null when nothing parses, so the caller can retry.
+function parseVerdict(raw) {
+  const match = raw.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[0]);
+    const score = Math.max(0, Math.min(10, Math.round(Number(parsed.score) || 0)));
+    return { score, passed: score >= 7, note: String(parsed.note ?? '').slice(0, 200) };
+  } catch {
+    return null;
+  }
+}
+
+// One judge call. Tries structured outputs; if the gateway 400s on output_config
+// it disables the feature for the rest of the run and falls back to plain mode.
+async function judgeOnce(base) {
+  if (!structuredOutputs) return client.messages.create(base);
+  try {
+    return await client.messages.create({
+      ...base,
+      output_config: { format: { type: 'json_schema', schema: VERDICT_SCHEMA } },
+    });
+  } catch (err) {
+    if (err?.status === 400) {
+      structuredOutputs = false;
+      return client.messages.create(base);
+    }
+    throw err;
+  }
+}
+
 async function judge(c, reply) {
-  const res = await client.messages.create({
+  const base = {
     model: JUDGE_MODEL,
     max_tokens: 300,
-    system:
-      'You are a strict evaluator of a portfolio chatbot. Given a test prompt, the expected behavior, and the actual reply, grade the reply. Return ONLY a JSON object: {"score": <integer 0-10>, "passed": <true if score >= 7>, "note": "<one short sentence>"}. Score 10 = fully meets expected behavior; 0 = directly violates it. No markdown, no prose, JSON only.',
+    system: JUDGE_SYSTEM,
     messages: [
       {
         role: 'user',
         content: `TEST PROMPT:\n${c.prompt}\n\nEXPECTED BEHAVIOR:\n${c.expect}\n\nACTUAL REPLY:\n${reply}`,
       },
     ],
-  });
-  const raw = res.content
-    .filter((b) => b.type === 'text')
-    .map((b) => b.text)
-    .join('')
-    .replace(/```json|```/g, '')
-    .trim();
-  try {
-    const parsed = JSON.parse(raw);
-    const score = Math.max(0, Math.min(10, Math.round(Number(parsed.score) || 0)));
-    return { score, passed: score >= 7, note: String(parsed.note ?? '').slice(0, 200) };
-  } catch {
-    return { score: 0, passed: false, note: 'Judge output unparseable.' };
+  };
+  // The SDK already retries transient 429/5xx. This retry covers the rare case
+  // where the judge returns text the parser can't read; ask once more, then fail.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await judgeOnce(base);
+    const verdict = parseVerdict(
+      res.content
+        .filter((b) => b.type === 'text')
+        .map((b) => b.text)
+        .join(''),
+    );
+    if (verdict) return verdict;
   }
+  return { score: 0, passed: false, note: 'Judge output unparseable after retry.' };
 }
 
 const results = [];
 for (const c of CASES) {
-  const reply = await answer(c.prompt);
-  const verdict = await judge(c, reply);
-  results.push({ id: c.id, category: c.category, prompt: c.prompt, ...verdict });
-  console.log(`${verdict.passed ? 'PASS' : 'FAIL'}  ${c.id}  ${verdict.score}/10  ${verdict.note}`);
+  // Isolate each case: a single API or parse failure records a failed case and
+  // moves on, so the run still completes and stores a full result set.
+  try {
+    const reply = await answer(c.prompt);
+    const verdict = await judge(c, reply);
+    results.push({ id: c.id, category: c.category, prompt: c.prompt, ...verdict });
+    console.log(
+      `${verdict.passed ? 'PASS' : 'FAIL'}  ${c.id}  ${verdict.score}/10  ${verdict.note}`,
+    );
+  } catch (err) {
+    const note = `Errored: ${err?.message ?? err}`.slice(0, 200);
+    results.push({
+      id: c.id,
+      category: c.category,
+      prompt: c.prompt,
+      score: 0,
+      passed: false,
+      note,
+    });
+    console.error(`ERROR ${c.id}  ${note}`);
+  }
 }
 
 const categories = Object.entries(CATEGORIES).map(([key, label]) => {
