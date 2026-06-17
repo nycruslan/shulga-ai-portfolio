@@ -7,10 +7,23 @@ import { readTraderSnapshot } from '../../lib/turso';
 // Middleware guarantees only the owner reaches /admin/*.
 const snap = await readTraderSnapshot();
 
+// The publisher's learning/regime/monitor blobs are loosely-typed JSON; type the
+// fields this page actually reads so they render without an `any` escape hatch.
+type Regime = { label?: string; exposure?: number; vix?: number };
+type Monitor = { alive?: boolean; alerts_24h?: number };
+type Learning = {
+  ml_stock_status?: string;
+  ml_crypto_status?: string;
+  go_live_ready?: boolean;
+  go_live_trades?: number;
+  go_live_trades_needed?: number;
+  go_live_gate?: string;
+};
+
 const books = snap?.books ?? [];
-const learning = (snap?.learning ?? {}) as Record<string, any>;
-const regime = (snap?.regime ?? {}) as Record<string, any>;
-const monitor = (snap?.monitor ?? {}) as Record<string, any>;
+const learning = (snap?.learning ?? {}) as Learning;
+const regime = (snap?.regime ?? {}) as Regime;
+const monitor = (snap?.monitor ?? {}) as Monitor;
 const reflections = snap?.reflections ?? [];
 const degraded = snap?.degraded ?? [];
 
@@ -19,10 +32,10 @@ const updated = updatedDate ? updatedDate.toLocaleString() : null;
 const ageMin = updatedDate ? (Date.now() - updatedDate.getTime()) / 60000 : null;
 const stale = ageMin != null && ageMin > 25; // publisher runs every 15 min
 
-const pct = (v: any) => (typeof v === 'number' ? `${v > 0 ? '+' : ''}${v.toFixed(1)}%` : '—');
-const tone = (v: any) =>
+const pct = (v: unknown) => (typeof v === 'number' ? `${v > 0 ? '+' : ''}${v.toFixed(1)}%` : '—');
+const tone = (v: unknown) =>
   typeof v !== 'number' ? '' : v > 0.05 ? 'text-emerald-300' : v < -0.05 ? 'text-rose-300' : '';
-const money = (v: any) => (typeof v === 'number' ? `$${Math.round(v).toLocaleString()}` : '—');
+const money = (v: unknown) => (typeof v === 'number' ? `$${Math.round(v).toLocaleString()}` : '—');
 ---
 
 <AdminShell title="AI Trader">
