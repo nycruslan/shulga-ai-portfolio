@@ -120,14 +120,20 @@ export async function readSnapshot(): Promise<Snapshot | null> {
 // this type and the page still renders.
 export type TraderBook = {
   name?: string;
+  mode?: string;
   equity?: number;
   start?: number;
+  cash?: number | null;
+  deployed_pct?: number | null;
   pnl_pct?: number | null;
   alpha_pct?: number | null;
   win_rate?: number | null;
   open_n?: number | null;
   closed_n?: number | null;
   reward_risk?: number | null;
+  max_dd?: number | null;
+  heat_pct?: number | null;
+  heat_cap?: number | null;
   stop_exits?: number | null;
   time_exits?: number | null;
 };
@@ -145,7 +151,24 @@ export type TraderPosition = {
   conviction?: string | null;
   source?: string | null;
   earnings_days?: number | null;
+  gain_r?: number | null;
+  pyramid_eligible?: boolean | null;
   thesis?: string | null;
+};
+export type TraderCarry = {
+  flag?: string; // calm | elevated | unwinding | unknown
+  score?: number | null;
+  levels?: Record<string, number | null>;
+  moves_5d_pct?: Record<string, number | null>;
+};
+export type TraderMacroEvent = {
+  date?: string;
+  event?: string;
+  country?: string;
+  impact?: string; // HIGH | MEDIUM
+  days?: number | null;
+  forecast?: string | null;
+  previous?: string | null;
 };
 export type TraderClosed = {
   book?: string;
@@ -179,6 +202,8 @@ export type TraderSnapshot = {
     created_at?: string;
   }>;
   regime?: Record<string, unknown>;
+  carry?: TraderCarry;
+  macro_events?: TraderMacroEvent[];
   monitor?: Record<string, unknown>;
 };
 

@@ -26,6 +26,8 @@ type Position = {
   conviction?: string | null;
   source?: string | null;
   earnings_days?: number | null;
+  gain_r?: number | null;
+  pyramid_eligible?: boolean | null;
   thesis?: string | null;
 };
 type Closed = {
@@ -220,11 +222,33 @@ const positionColumns: ColumnDef<Position, unknown>[] = [
     accessorKey: 'symbol',
     header: 'Name',
     meta: { className: 'whitespace-nowrap text-text font-medium' },
-    cell: ({ row }) => (
-      <span>
-        {verdict(row.original.pnl_pct)} {row.original.symbol}
-      </span>
-    ),
+    cell: ({ row }) => {
+      const p = row.original;
+      const ed = p.earnings_days;
+      return (
+        <span className="inline-flex items-center gap-1.5" title={p.thesis ?? undefined}>
+          <span>
+            {verdict(p.pnl_pct)} {p.symbol}
+          </span>
+          {p.pyramid_eligible && (
+            <span
+              className="rounded px-1 py-0.5 text-[9px] font-medium ring-1 ring-inset ring-emerald-500/20 bg-emerald-500/10 text-emerald-300"
+              title="up ≥1R with stop at breakeven — eligible to pyramid"
+            >
+              ▲ add
+            </span>
+          )}
+          {typeof ed === 'number' && ed >= 0 && ed <= 7 && (
+            <span
+              className="rounded px-1 py-0.5 text-[9px] font-medium ring-1 ring-inset ring-amber-500/20 bg-amber-500/10 text-amber-300"
+              title="earnings within 7 days — binary risk"
+            >
+              ⚠ ER {ed}d
+            </span>
+          )}
+        </span>
+      );
+    },
   },
   {
     id: 'book',
@@ -245,6 +269,15 @@ const positionColumns: ColumnDef<Position, unknown>[] = [
     ),
   },
   {
+    accessorKey: 'gain_r',
+    header: 'R',
+    meta: { align: 'right', className: 'font-mono tabular-nums text-text-muted' },
+    cell: ({ row }) =>
+      row.original.gain_r == null
+        ? '—'
+        : (row.original.gain_r > 0 ? '+' : '') + row.original.gain_r + 'R',
+  },
+  {
     accessorKey: 'pnl_usd',
     header: 'P&L $',
     meta: { align: 'right', className: 'whitespace-nowrap font-mono tabular-nums text-text-muted' },
@@ -253,8 +286,19 @@ const positionColumns: ColumnDef<Position, unknown>[] = [
   {
     accessorKey: 'days_held',
     header: 'Held',
-    meta: { align: 'right', className: 'font-mono tabular-nums text-text-muted' },
-    cell: ({ row }) => (row.original.days_held == null ? '—' : row.original.days_held + 'd'),
+    meta: { align: 'right', className: 'whitespace-nowrap font-mono tabular-nums text-text-muted' },
+    cell: ({ row }) => {
+      const p = row.original;
+      if (p.days_held == null) return '—';
+      return (
+        <span>
+          {p.days_held}d
+          {typeof p.days_left === 'number' && (
+            <span className="text-text-subtle"> ·{p.days_left} left</span>
+          )}
+        </span>
+      );
+    },
   },
   {
     accessorKey: 'stop_dist_pct',
@@ -268,6 +312,19 @@ const positionColumns: ColumnDef<Position, unknown>[] = [
     header: 'Size',
     meta: { align: 'right', className: 'font-mono tabular-nums text-text-muted' },
     cell: ({ row }) => (row.original.pct_of_book == null ? '—' : row.original.pct_of_book + '%'),
+  },
+  {
+    id: 'conviction',
+    accessorFn: (r) => r.conviction,
+    header: 'Conv',
+    meta: { className: 'whitespace-nowrap' },
+    cell: ({ row }) => {
+      const c = row.original.conviction;
+      if (!c) return <span className="text-text-subtle">—</span>;
+      const t =
+        c === 'high' ? 'text-emerald-300' : c === 'low' ? 'text-text-subtle' : 'text-text-muted';
+      return <span className={'text-xs ' + t}>{c}</span>;
+    },
   },
   {
     accessorKey: 'source',
@@ -429,6 +486,8 @@ const Empty = ({ children }: { children: React.ReactNode }) => (
 const CURVE_LABELS: Record<string, string> = {
   stock: 'Stocks',
   crypto: 'Crypto',
+  mild_stock: 'Mild stk',
+  mild_crypto: 'Mild crp',
   aggressive_stock: 'Aggressive stk',
   aggressive_crypto: 'Aggressive crp',
 };

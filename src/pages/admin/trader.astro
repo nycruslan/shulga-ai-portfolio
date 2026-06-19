@@ -2,14 +2,20 @@
 export const prerender = false;
 import AdminShell from '../../layouts/AdminShell.astro';
 import TraderTables from '../../components/admin/TraderTables.tsx';
-import { readTraderSnapshot } from '../../lib/turso';
+import { readTraderSnapshot, type TraderCarry, type TraderMacroEvent } from '../../lib/turso';
 
 // Middleware guarantees only the owner reaches /admin/*.
 const snap = await readTraderSnapshot();
 
 // The publisher's learning/regime/monitor blobs are loosely-typed JSON; type the
 // fields this page actually reads so they render without an `any` escape hatch.
-type Regime = { label?: string; exposure?: number; vix?: number };
+type Regime = {
+  label?: string;
+  exposure?: number;
+  vix?: number;
+  breadth_pct?: number;
+  macro_risk?: number;
+};
 type Monitor = { alive?: boolean; alerts_24h?: number };
 type Learning = {
   ml_stock_status?: string;
@@ -18,12 +24,18 @@ type Learning = {
   go_live_trades?: number;
   go_live_trades_needed?: number;
   go_live_gate?: string;
+  dsr?: number | null;
+  dsr_significant?: boolean;
+  sharpe?: number | null;
+  n_trials?: number;
 };
 
 const books = snap?.books ?? [];
 const learning = (snap?.learning ?? {}) as Learning;
 const regime = (snap?.regime ?? {}) as Regime;
 const monitor = (snap?.monitor ?? {}) as Monitor;
+const carry = (snap?.carry ?? {}) as TraderCarry;
+const macroEvents = (snap?.macro_events ?? []) as TraderMacroEvent[];
 const reflections = snap?.reflections ?? [];
 const degraded = snap?.degraded ?? [];
 
@@ -36,6 +48,22 @@ const pct = (v: unknown) => (typeof v === 'number' ? `${v > 0 ? '+' : ''}${v.toF
 const tone = (v: unknown) =>
   typeof v !== 'number' ? '' : v > 0.05 ? 'text-emerald-300' : v < -0.05 ? 'text-rose-300' : '';
 const money = (v: unknown) => (typeof v === 'number' ? `$${Math.round(v).toLocaleString()}` : '—');
+const clamp = (v: number) => Math.max(0, Math.min(100, v));
+const heatBar = (h: number, cap: number) => {
+  const r = cap ? h / cap : 0;
+  return r >= 0.9 ? 'bg-rose-400/80' : r >= 0.6 ? 'bg-amber-400/80' : 'bg-emerald-400/70';
+};
+const carryTone = (f?: string) =>
+  f === 'unwinding'
+    ? 'border-rose-500/30 bg-rose-500/[0.08] text-rose-300'
+    : f === 'elevated'
+      ? 'border-amber-500/30 bg-amber-500/[0.08] text-amber-300'
+      : f === 'calm'
+        ? 'border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-300'
+        : 'border-border bg-bg-elevated/40 text-text-muted';
+const tradesPct = clamp(
+  ((learning.go_live_trades ?? 0) / (learning.go_live_trades_needed ?? 40)) * 100,
+);
 ---
 
 <AdminShell title="AI Trader">
@@ -65,30 +93,8 @@ const money = (v: unknown) => (typeof v === 'number' ? `$${Math.round(v).toLocal
           </div>
         )}
 
-        {/* Book KPI cards */}
-        <section class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {books.map((b) => (
-            <div class="rounded-xl border border-border bg-bg-elevated/40 p-4">
-              <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-                {b.name}
-              </div>
-              <div class="mt-1 text-2xl font-medium tabular-nums">{money(b.equity)}</div>
-              <div class="mt-1 flex items-baseline gap-2 text-xs">
-                <span class={'font-mono tabular-nums ' + tone(b.pnl_pct)}>{pct(b.pnl_pct)}</span>
-                {typeof b.alpha_pct === 'number' && (
-                  <span class="text-text-subtle">α {pct(b.alpha_pct)}</span>
-                )}
-              </div>
-              <div class="mt-2 font-mono text-[11px] text-text-subtle tabular-nums">
-                {b.open_n ?? 0} open · {b.closed_n ?? 0} closed
-                {typeof b.win_rate === 'number' ? ` · ${b.win_rate}% win` : ''}
-              </div>
-            </div>
-          ))}
-        </section>
-
-        {/* Regime + monitor strip */}
-        <section class="mt-4 flex flex-wrap items-center gap-2 text-xs">
+        {/* Risk ribbon: regime · carry · monitor */}
+        <section class="flex flex-wrap items-center gap-2 text-xs">
           {regime.label && (
             <span class="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg-elevated/40 px-3 py-1 text-text-muted">
               regime <b class="text-text">{regime.label}</b>
@@ -100,6 +106,24 @@ const money = (v: unknown) => (typeof v === 'number' ? `$${Math.round(v).toLocal
           {typeof regime.vix === 'number' && (
             <span class="inline-flex rounded-full border border-border bg-bg-elevated/40 px-3 py-1 text-text-muted">
               VIX <b class="ml-1 tabular-nums text-text">{regime.vix}</b>
+            </span>
+          )}
+          {typeof regime.breadth_pct === 'number' && (
+            <span class="inline-flex rounded-full border border-border bg-bg-elevated/40 px-3 py-1 text-text-muted">
+              breadth <b class="ml-1 tabular-nums text-text">{regime.breadth_pct}%</b>
+            </span>
+          )}
+          {carry.flag && carry.flag !== 'unknown' && (
+            <span
+              class={
+                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 ' +
+                carryTone(carry.flag)
+              }
+            >
+              yen carry <b>{carry.flag}</b>
+              {typeof carry.levels?.USDJPY === 'number' && (
+                <span class="text-text-subtle">· USDJPY {carry.levels.USDJPY}</span>
+              )}
             </span>
           )}
           <span
@@ -117,38 +141,161 @@ const money = (v: unknown) => (typeof v === 'number' ? `$${Math.round(v).toLocal
           </span>
         </section>
 
-        {/* Learning / go-live panel */}
+        {/* Upcoming macro events (binary risk) */}
+        {macroEvents.length > 0 && (
+          <section class="mt-3 flex flex-wrap items-center gap-2">
+            <span class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+              next 10d
+            </span>
+            {macroEvents.map((e) => (
+              <span
+                class={
+                  'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs ' +
+                  (e.impact === 'HIGH'
+                    ? 'border-amber-500/30 bg-amber-500/[0.05] text-amber-200'
+                    : 'border-border bg-bg-elevated/40 text-text-muted')
+                }
+              >
+                <b class="text-text">{e.country}</b> {e.event}
+                <span class="text-text-subtle">{e.days === 0 ? 'today' : `in ${e.days}d`}</span>
+              </span>
+            ))}
+          </section>
+        )}
+
+        {/* Book risk-console cards */}
+        <section class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {books.map((b) => (
+            <div class="rounded-xl border border-border bg-bg-elevated/40 p-4">
+              <div class="flex items-center justify-between">
+                <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+                  {b.name}
+                </div>
+                {typeof b.win_rate === 'number' && (
+                  <span class="font-mono text-[10px] text-text-subtle tabular-nums">
+                    {b.win_rate}% win
+                  </span>
+                )}
+              </div>
+              <div class="mt-1 text-2xl font-medium tabular-nums">{money(b.equity)}</div>
+              <div class="mt-1 flex items-baseline gap-2 text-xs">
+                <span class={'font-mono tabular-nums ' + tone(b.pnl_pct)}>{pct(b.pnl_pct)}</span>
+                {typeof b.alpha_pct === 'number' && (
+                  <span class="text-text-subtle">α {pct(b.alpha_pct)}</span>
+                )}
+                <span class="ml-auto font-mono text-[11px] text-text-subtle tabular-nums">
+                  {b.open_n ?? 0} open · {b.closed_n ?? 0} closed
+                </span>
+              </div>
+
+              {typeof b.deployed_pct === 'number' && (
+                <div class="mt-3">
+                  <div class="flex items-center justify-between font-mono text-[10px] text-text-subtle">
+                    <span>{b.deployed_pct}% deployed</span>
+                    <span>{money(b.cash)} cash</span>
+                  </div>
+                  <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+                    <div
+                      class="h-full rounded-full bg-sky-400/70"
+                      style={`width:${clamp(b.deployed_pct)}%`}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {(typeof b.heat_pct === 'number' || typeof b.max_dd === 'number') && (
+                <div class="mt-2 flex items-center gap-2 font-mono text-[10px] text-text-subtle">
+                  {typeof b.heat_pct === 'number' && typeof b.heat_cap === 'number' && (
+                    <>
+                      <span class="shrink-0">heat</span>
+                      <div class="h-1 w-14 overflow-hidden rounded-full bg-white/[0.06]">
+                        <div
+                          class={'h-full rounded-full ' + heatBar(b.heat_pct, b.heat_cap)}
+                          style={`width:${clamp((b.heat_pct / (b.heat_cap || 1)) * 100)}%`}
+                        />
+                      </div>
+                      <span class="shrink-0 tabular-nums">
+                        {b.heat_pct}/{b.heat_cap}%
+                      </span>
+                    </>
+                  )}
+                  {typeof b.max_dd === 'number' && (
+                    <span class="ml-auto shrink-0 tabular-nums">maxDD {b.max_dd}%</span>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </section>
+
+        {/* Learning / go-live gate */}
         {Object.keys(learning).length > 0 && (
           <section class="mt-4 rounded-xl border border-border bg-bg-elevated/40 p-4">
-            <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-              Learning · go-live gate
+            <div class="flex items-center justify-between">
+              <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+                Learning · go-live gate
+              </div>
+              <span
+                class={
+                  'rounded-full px-2 py-0.5 font-mono text-[10px] ring-1 ring-inset ' +
+                  (learning.go_live_ready
+                    ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/20'
+                    : 'bg-bg-elevated text-text-subtle ring-border')
+                }
+              >
+                {learning.go_live_ready ? 'READY' : 'not yet'}
+              </span>
             </div>
-            <div class="mt-2 grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+
+            {/* trades progress */}
+            <div class="mt-3">
+              <div class="flex items-center justify-between font-mono text-[11px] text-text-muted tabular-nums">
+                <span>
+                  {learning.go_live_trades ?? 0}/{learning.go_live_trades_needed ?? 40} closed
+                  trades
+                </span>
+                <span class="text-text-subtle">{Math.round(tradesPct)}%</span>
+              </div>
+              <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+                <div class="h-full rounded-full bg-sky-400/70" style={`width:${tradesPct}%`} />
+              </div>
+            </div>
+
+            <div class="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-4">
+              <div class="flex justify-between gap-3">
+                <span class="text-text-muted">DSR</span>
+                <span
+                  class={
+                    'font-mono tabular-nums ' +
+                    (learning.dsr_significant ? 'text-emerald-300' : 'text-text')
+                  }
+                >
+                  {typeof learning.dsr === 'number' ? learning.dsr.toFixed(2) : '—'}
+                  <span class="text-text-subtle"> / 0.95</span>
+                </span>
+              </div>
+              <div class="flex justify-between gap-3">
+                <span class="text-text-muted">Sharpe</span>
+                <span class="font-mono tabular-nums text-text">
+                  {typeof learning.sharpe === 'number' ? learning.sharpe.toFixed(2) : '—'}
+                </span>
+              </div>
               <div class="flex justify-between gap-3">
                 <span class="text-text-muted">Stock ML</span>
-                <span class="font-mono text-text">{learning.ml_stock_status ?? '—'}</span>
+                <span class="font-mono text-[12px] text-text">
+                  {learning.ml_stock_status ?? '—'}
+                </span>
               </div>
               <div class="flex justify-between gap-3">
                 <span class="text-text-muted">Crypto ML</span>
-                <span class="font-mono text-text">{learning.ml_crypto_status ?? '—'}</span>
-              </div>
-              <div class="flex justify-between gap-3">
-                <span class="text-text-muted">Go-live</span>
-                <span
-                  class={'font-mono ' + (learning.go_live_ready ? 'text-emerald-300' : 'text-text')}
-                >
-                  {learning.go_live_ready
-                    ? 'READY'
-                    : `${learning.go_live_trades ?? 0}/${learning.go_live_trades_needed ?? 40} trades`}
-                </span>
-              </div>
-              <div class="flex justify-between gap-3">
-                <span class="text-text-muted">Gate</span>
-                <span class="font-mono text-[11px] text-text-subtle">
-                  {learning.go_live_gate ?? '—'}
+                <span class="font-mono text-[12px] text-text">
+                  {learning.ml_crypto_status ?? '—'}
                 </span>
               </div>
             </div>
+            {learning.go_live_gate && (
+              <p class="mt-2 font-mono text-[11px] text-text-subtle">{learning.go_live_gate}</p>
+            )}
           </section>
         )}
 
