@@ -56,10 +56,10 @@ const pnlTone = (n?: number | null) =>
 const verdict = (n?: number | null) => (n == null ? '⚪' : n > 0.05 ? '🟢' : n < -2 ? '🔴' : '🟡');
 
 const bookBadge = (b?: string) => {
-  const aggr = (b ?? '').includes('aggressive');
-  return aggr
-    ? 'bg-amber-500/10 text-amber-300 ring-amber-500/20'
-    : 'bg-sky-500/10 text-sky-300 ring-sky-500/20';
+  const name = b ?? '';
+  if (name.includes('aggressive')) return 'bg-amber-500/10 text-amber-300 ring-amber-500/20';
+  if (name.includes('mild')) return 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/20';
+  return 'bg-sky-500/10 text-sky-300 ring-sky-500/20';
 };
 
 const fmtUsd = (n?: number | null) =>
