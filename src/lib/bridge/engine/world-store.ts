@@ -135,7 +135,11 @@ export function createWorldStore<TWorld, TInteraction>(
     if (!client) return;
     await ensureSchema();
     const ownerClause = lockToken === undefined ? '' : ' AND lock_until = ?';
-    const args: (string | number)[] = [JSON.stringify(world), tickedAtIso, new Date().toISOString()];
+    const args: (string | number)[] = [
+      JSON.stringify(world),
+      tickedAtIso,
+      new Date().toISOString(),
+    ];
     if (lockToken !== undefined) args.push(lockToken);
     await client.execute({
       sql: `UPDATE ${stateTable} SET version = version + 1, world = ?, ticked_at = ?, lock_until = 0, updated_at = ? WHERE id = 1${ownerClause}`,

@@ -73,9 +73,9 @@ describe('audit rules', () => {
     // The result must satisfy the auditor it feeds.
     expect(auditCopyEntry('k', repairEmDashes('Clean idea — but a dash.'))).toEqual([]);
     // It only touches dashes: a buzzword still stands for the model to fix.
-    expect(auditCopyEntry('k', repairEmDashes('A robust idea — really.')).map((f) => f.rule)).toEqual(
-      ['buzzword'],
-    );
+    expect(
+      auditCopyEntry('k', repairEmDashes('A robust idea — really.')).map((f) => f.rule),
+    ).toEqual(['buzzword']);
   });
 
   it('audit cadence is roughly daily', () => {
