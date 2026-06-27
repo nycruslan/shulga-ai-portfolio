@@ -46,11 +46,20 @@ const statusBadge = (s: string) =>
     withdrawn: 'bg-white/5 text-text-subtle ring-white/10',
   })[s] ?? 'bg-white/5 text-text-muted ring-white/10';
 
-// Pull the leading number out of currency-ish strings ("$310k" -> 310) so TC
-// sorts numerically instead of lexically. Empty/'—' sink to the bottom.
+// Pull the number out of currency-ish strings and apply any k/M suffix
+// ("$310k" -> 310000, "$1.2M" -> 1200000) so TC sorts by real magnitude across
+// mixed formats. Empty/'—' sink to the bottom.
 const compValue = (s: string) => {
   const m = s.match(/-?\d[\d,.]*/);
-  return m ? parseFloat(m[0].replace(/,/g, '')) : -Infinity;
+  if (!m) return -Infinity;
+  const n = parseFloat(m[0].replace(/,/g, ''));
+  if (!Number.isFinite(n)) return -Infinity;
+  const suffix = s
+    .slice(m.index! + m[0].length)
+    .trim()
+    .toLowerCase()[0];
+  const scale = suffix === 'm' ? 1e6 : suffix === 'k' ? 1e3 : 1;
+  return n * scale;
 };
 
 function CopyButton({ value }: { value: string }) {

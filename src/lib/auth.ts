@@ -14,12 +14,19 @@ const {
   ADMIN_ALLOW_SIGNUP,
 } = process.env;
 
-// The single allowed account. Middleware also enforces this on /admin.
-export const OWNER = OWNER_EMAIL ?? null;
+// The single allowed account, normalized so a casing/whitespace mismatch
+// between the env value and the stored session email can't lock the owner out.
+// Middleware also enforces this on /admin.
+export const OWNER = OWNER_EMAIL ? OWNER_EMAIL.trim().toLowerCase() : null;
 
 // Admin is fully optional: only wire Better Auth when its config is present, so
-// the public site builds and serves with none of these set.
-const ready = Boolean(TURSO_DATABASE_URL && TURSO_AUTH_TOKEN && BETTER_AUTH_SECRET && OWNER_EMAIL);
+// the public site builds and serves with none of these set. BETTER_AUTH_URL is
+// required too: without it the lib would fall back to a localhost baseURL,
+// giving the passkey the wrong origin and undercutting Secure cookies. Better
+// to leave admin unwired than to come up insecure.
+const ready = Boolean(
+  TURSO_DATABASE_URL && TURSO_AUTH_TOKEN && BETTER_AUTH_SECRET && OWNER_EMAIL && BETTER_AUTH_URL,
+);
 
 function build() {
   const baseURL = BETTER_AUTH_URL ?? 'http://localhost:4321';

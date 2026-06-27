@@ -14,7 +14,7 @@ import { getProject, listProjects, searchPortfolio } from '../../../lib/portfoli
 import { readEvalRuns } from '../../../lib/turso';
 import { saveConversation } from '../../../lib/bridge/persistence/messages';
 import { daySpend } from '../../../lib/bridge/persistence/budget';
-import { clientIp, makeLimiter, slidingWindow } from '../../../lib/ratelimit';
+import { clientIp, makeLimiter } from '../../../lib/ratelimit';
 
 export const prerender = false;
 
@@ -28,7 +28,7 @@ const json = (body: unknown, status = 200) =>
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 
-const limiter = makeLimiter('bridge-briefing', slidingWindow(3, '1 h'));
+const limiter = makeLimiter('bridge-briefing', 3, 60 * 60_000);
 const BRIEFING_DAILY_CAP = 30;
 
 const SCRIPTED = [
@@ -56,7 +56,7 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   }
 
   if (limiter) {
-    const { success } = await limiter.limit(clientIp(request, clientAddress));
+    const { success } = await limiter.limit(clientIp(clientAddress));
     if (!success) return json({ error: 'Rate limit: 3 briefings per hour.' }, 429);
   }
 

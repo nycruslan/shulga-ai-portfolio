@@ -209,6 +209,9 @@ export default function HeroShader() {
           io.disconnect();
           window.removeEventListener('mousemove', onMouseMove);
           gl.canvas.remove();
+          // Removing the canvas doesn't free the GL context; release it
+          // explicitly so remounts don't exhaust the browser's context pool.
+          gl.getExtension('WEBGL_lose_context')?.loseContext();
         };
       } catch (err) {
         console.warn('[HeroShader] WebGL unavailable, using fallback', err);

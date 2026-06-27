@@ -71,7 +71,9 @@ const handler = createMcpHandler(
         title: 'Search the portfolio',
         description:
           'Lexical search across the resume and all case studies. Returns scored passages. Call when the question is specific (a technology, a metric, a decision) and you do not know which project covers it.',
-        inputSchema: { query: z.string().describe('Search terms, e.g. "rerank precision"') },
+        inputSchema: {
+          query: z.string().max(200).describe('Search terms, e.g. "rerank precision"'),
+        },
       },
       async ({ query }) => {
         const hits = await searchPortfolio(query, 5);

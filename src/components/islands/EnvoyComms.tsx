@@ -97,10 +97,18 @@ export default function EnvoyComms({ online }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let cancelled = false;
     fetch(`/api/bridge/conversation.json?id=${encodeURIComponent(conversationId)}`)
       .then((r) => (r.ok ? r.json() : { messages: [] }))
-      .then((d) => setInitialMessages(d.messages ?? []))
-      .catch(() => setInitialMessages([]));
+      .then((d) => {
+        if (!cancelled) setInitialMessages(d.messages ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setInitialMessages([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [conversationId]);
 
   if (!online) {

@@ -4,6 +4,7 @@ import AdminShell from '../../layouts/AdminShell.astro';
 import { turso } from '../../lib/turso-client';
 import { readSnapshot, readTraderSnapshot } from '../../lib/turso';
 import { listProposals } from '../../lib/bridge/persistence/proposals';
+import { relativeTime } from '../../lib/relative-time';
 
 // The owner hub: every admin feature as a card with a live stat, so a glance
 // tells you what needs attention. Middleware guarantees only the owner is here.
@@ -41,7 +42,7 @@ const features: Feature[] = [
     label: 'Markets',
     name: 'AI Trader',
     desc: 'Paper books, market regime, learning, and reflections.',
-    stat: tradeUpdated ? `updated ${tradeUpdated.toLocaleString()}` : 'no snapshot yet',
+    stat: trade?.generated_at ? `updated ${relativeTime(trade.generated_at)}` : 'no snapshot yet',
     alert: tradeStaleMin != null && tradeStaleMin > 25,
   },
   {

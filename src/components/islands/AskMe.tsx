@@ -61,15 +61,18 @@ export default function AskMe() {
   }, []);
 
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden';
-      // Lenis intercepts wheel events globally — stop it so the background doesn't scroll
-      window.__lenis?.stop();
-      setTimeout(() => inputRef.current?.focus(), 80);
-    } else {
+    if (!open) return;
+    document.body.style.overflow = 'hidden';
+    // Lenis intercepts wheel events globally; stop it so the background doesn't scroll.
+    window.__lenis?.stop();
+    const focusId = setTimeout(() => inputRef.current?.focus(), 80);
+    // Restore on close AND on unmount, so closing the panel or navigating away
+    // never leaves the body scroll-locked with Lenis stopped.
+    return () => {
+      clearTimeout(focusId);
       document.body.style.overflow = '';
       window.__lenis?.start();
-    }
+    };
   }, [open]);
 
   // Scroll to bottom after paint — rAF ensures DOM is updated before reading scrollHeight

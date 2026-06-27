@@ -1,6 +1,13 @@
-// Nightly evals for the portfolio chat. Runs a fixed case set against the same
-// system prompt the live chat uses, has an LLM judge grade each answer, and
-// appends one JSON row to Turso (eval_runs). The /evals page renders the rows.
+// Nightly evals for the portfolio chat. Runs a fixed case set against the live
+// chat's base system prompt and has an LLM judge grade each answer, then appends
+// one JSON row to Turso (eval_runs). The /evals page renders the rows.
+//
+// Scope note: this measures the TOOL-LESS baseline (the model answering from the
+// system-prompt facts alone). Production chat also gives the model
+// search_portfolio/get_project, but those tools depend on the Astro runtime
+// (astro:content / astro:env) and can't load in this standalone CI script, so
+// they're out of scope here. The persona/refusal/injection cases are unaffected;
+// groundedness is graded against the baseline, not the tool-augmented path.
 //
 // Run locally:  node --env-file=.env scripts/run-evals.mjs
 // CI:           .github/workflows/evals.yml (nightly)

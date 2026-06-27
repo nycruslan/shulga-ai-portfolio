@@ -1,31 +1,19 @@
 import type { APIRoute } from 'astro';
-import {
-  AI_GATEWAY_API_KEY,
-  CHAT_API_KEY,
-  UPSTASH_REDIS_REST_URL,
-  UPSTASH_REDIS_REST_TOKEN,
-} from 'astro:env/server';
+import { AI_GATEWAY_API_KEY, CHAT_API_KEY } from 'astro:env/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
 import { systemPrompt, about } from '../../data/about';
 import { getProject, listProjects, searchPortfolio } from '../../lib/portfolio-content';
 import { readEvalRuns } from '../../lib/turso';
+import { clientIp, makeLimiter } from '../../lib/ratelimit';
 
 export const prerender = false;
 
 const MAX_MESSAGES = 20;
 const MAX_TOOL_ROUNDS = 3;
 
-// Per-IP rate limit. Created once if Upstash is configured; otherwise null (no-op in dev).
-const ratelimit =
-  UPSTASH_REDIS_REST_URL && UPSTASH_REDIS_REST_TOKEN
-    ? new Ratelimit({
-        redis: new Redis({ url: UPSTASH_REDIS_REST_URL, token: UPSTASH_REDIS_REST_TOKEN }),
-        limiter: Ratelimit.slidingWindow(20, '1 h'),
-        prefix: 'chat',
-      })
-    : null;
+// Per-IP rate limit. Upstash when configured, an in-process cap in production
+// otherwise, no-op only in dev — a public model endpoint is never unmetered.
+const ratelimit = makeLimiter('chat', 20, 60 * 60_000);
 
 const json = (body: unknown, status: number) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -48,7 +36,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: 'get_project',
     description:
-      'Fetch the full case study for one project (problem, architecture, key decisions, what broke). Call when asked HOW something was built or for depth on one project. Slugs: multi-agent-platform, hybrid-rag, mcp-servers, ai-gateway, document-ai.',
+      'Fetch the full case study for one project (problem, architecture, key decisions, what broke). Call when asked HOW something was built or for depth on one project. Slugs: multi-agent-platform, hybrid-rag, mcp-servers, ai-gateway, document-ai, the-bridge.',
     input_schema: {
       type: 'object',
       properties: { slug: { type: 'string', description: 'Project slug' } },
@@ -133,11 +121,17 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   }
 
   if (ratelimit) {
-    const ip =
-      clientAddress || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'anon';
-    const { success } = await ratelimit.limit(ip);
-    if (!success) {
-      return json({ error: `Easy there. Too many questions for now. Email ${about.email}.` }, 429);
+    try {
+      const { success } = await ratelimit.limit(clientIp(clientAddress));
+      if (!success) {
+        return json(
+          { error: `Easy there. Too many questions for now. Email ${about.email}.` },
+          429,
+        );
+      }
+    } catch (err) {
+      // A limiter outage shouldn't 500 the endpoint; log and allow through.
+      console.error('[api/chat] rate limit check failed:', err);
     }
   }
 

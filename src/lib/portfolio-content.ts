@@ -57,10 +57,17 @@ export function getCorpus(): Promise<Chunk[]> {
 // inspectable; the point of the glass box is showing real scores, not magic.
 export async function searchPortfolio(query: string, limit = 4): Promise<SearchHit[]> {
   const corpus = await getCorpus();
-  const terms = query
-    .toLowerCase()
-    .split(/[^a-z0-9~%+.]+/)
-    .filter((t) => t.length > 2);
+  // Bound the work regardless of caller: cap input length, dedupe, and cap term
+  // count so a pathologically long query can't drive O(terms × corpus) CPU.
+  const terms = [
+    ...new Set(
+      query
+        .toLowerCase()
+        .slice(0, 200)
+        .split(/[^a-z0-9~%+.]+/)
+        .filter((t) => t.length > 2),
+    ),
+  ].slice(0, 24);
   if (!terms.length) return [];
 
   const hits = corpus

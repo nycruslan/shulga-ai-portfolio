@@ -18,8 +18,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
 
   if (path !== '/admin/login') {
-    const email = context.locals.user?.email;
-    if (!auth || !email || (OWNER && email !== OWNER)) {
+    const email = context.locals.user?.email?.trim().toLowerCase();
+    // Fail closed: require auth wired, an owner configured, and an exact match.
+    if (!auth || !OWNER || !email || email !== OWNER) {
       return context.redirect('/admin/login');
     }
   }

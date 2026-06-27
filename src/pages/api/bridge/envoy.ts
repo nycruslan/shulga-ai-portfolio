@@ -10,7 +10,7 @@ import { mockEnvoyModel, mockScoutModel } from '../../../lib/bridge/agents/mock-
 import { saveConversation } from '../../../lib/bridge/persistence/messages';
 import { daySpend, recordSpend } from '../../../lib/bridge/persistence/budget';
 import { estimateCostUsd } from '../../../lib/bridge/pricing';
-import { clientIp, makeLimiter, slidingWindow } from '../../../lib/ratelimit';
+import { clientIp, makeLimiter } from '../../../lib/ratelimit';
 
 export const prerender = false;
 
@@ -25,7 +25,7 @@ const json = (body: unknown, status = 200) =>
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 
-const limiter = makeLimiter('bridge-envoy', slidingWindow(20, '1 h'));
+const limiter = makeLimiter('bridge-envoy', 20, 60 * 60_000);
 const ENVOY_DAILY_CAP = 150;
 const GITHUB_USERNAME = about.github.split('/').pop() ?? 'nycruslan';
 
@@ -38,7 +38,7 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   }
 
   if (limiter) {
-    const { success } = await limiter.limit(clientIp(request, clientAddress));
+    const { success } = await limiter.limit(clientIp(clientAddress));
     if (!success) return json({ error: 'Rate limit: 20 messages per hour.' }, 429);
   }
 

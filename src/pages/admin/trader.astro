@@ -3,6 +3,7 @@ export const prerender = false;
 import AdminShell from '../../layouts/AdminShell.astro';
 import TraderTables from '../../components/admin/TraderTables.tsx';
 import { readTraderSnapshot, type TraderCarry, type TraderMacroEvent } from '../../lib/turso';
+import { relativeTime } from '../../lib/relative-time';
 
 // Middleware guarantees only the owner reaches /admin/*.
 const snap = await readTraderSnapshot();
@@ -40,7 +41,9 @@ const reflections = snap?.reflections ?? [];
 const degraded = snap?.degraded ?? [];
 
 const updatedDate = snap?.generated_at ? new Date(snap.generated_at) : null;
-const updated = updatedDate ? updatedDate.toLocaleString() : null;
+// Relative time is timezone-safe; toLocaleString() would render in the server's
+// UTC zone on Vercel and read as the viewer's local wall-clock.
+const updated = snap?.generated_at ? relativeTime(snap.generated_at) : null;
 const ageMin = updatedDate ? (Date.now() - updatedDate.getTime()) / 60000 : null;
 const stale = ageMin != null && ageMin > 25; // publisher runs every 15 min
 

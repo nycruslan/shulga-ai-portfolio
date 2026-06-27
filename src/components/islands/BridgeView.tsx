@@ -65,6 +65,13 @@ export default function BridgeView({ initial }: Props) {
   );
   const cursorRef = useRef(initial.cursor);
   const channelRef = useRef<HTMLOListElement>(null);
+  // The poll interval is started once with empty deps, so it captures `poll`
+  // once. Read `pinned` through a ref so the live-polled handler sees the
+  // current value instead of the stale `true` from first render.
+  const pinnedRef = useRef(pinned);
+  useEffect(() => {
+    pinnedRef.current = pinned;
+  }, [pinned]);
 
   // One clock for the whole screen; cheap and keeps timestamps coherent.
   useEffect(() => {
@@ -86,14 +93,14 @@ export default function BridgeView({ initial }: Props) {
         setEvents((prev) => {
           const known = new Set(prev.map((e) => e.id));
           const fresh = next.events.filter((e) => !known.has(e.id));
-          if (fresh.length && !pinned) setUnseen((n) => n + fresh.length);
+          if (fresh.length && !pinnedRef.current) setUnseen((n) => n + fresh.length);
           return fresh.length ? [...prev, ...fresh].slice(-200) : prev;
         });
       }
     } catch {
       /* transient network failure; next poll retries */
     }
-  }, [pinned]);
+  }, []);
 
   useEffect(() => {
     let pollId: number | undefined;

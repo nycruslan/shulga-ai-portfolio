@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { TICK_SECRET } from 'astro:env/server';
 import { runTick } from '../../../lib/bridge/run-tick';
-import { clientIp, makeLimiter, slidingWindow } from '../../../lib/ratelimit';
+import { clientIp, makeLimiter } from '../../../lib/ratelimit';
 
 export const prerender = false;
 
@@ -17,12 +17,12 @@ const json = (body: unknown, status = 200) =>
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 
-const limiter = makeLimiter('bridge-tick', slidingWindow(6, '10 m'));
+const limiter = makeLimiter('bridge-tick', 6, 10 * 60_000);
 
 export const POST: APIRoute = async ({ request, clientAddress }) => {
   const trusted = !!TICK_SECRET && request.headers.get('x-tick-secret') === TICK_SECRET;
   if (!trusted && limiter) {
-    const { success } = await limiter.limit(clientIp(request, clientAddress));
+    const { success } = await limiter.limit(clientIp(clientAddress));
     if (!success) return json({ ok: false, reason: 'rate' }, 429);
   }
 

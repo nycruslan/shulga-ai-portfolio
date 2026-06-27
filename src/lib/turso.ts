@@ -105,7 +105,24 @@ export async function readSnapshot(): Promise<Snapshot | null> {
     const rs = await client.execute('SELECT data FROM jobhunt_snapshot WHERE id = 1');
     const row = rs.rows[0];
     if (!row || row.data == null) return null;
-    return JSON.parse(String(row.data)) as Snapshot;
+    // Fill every required field: an older or partial (but valid-JSON) row must
+    // not make the SSR'd dashboard throw on a missing funnel/pipeline/followups.
+    const p = JSON.parse(String(row.data)) as Partial<Snapshot>;
+    return {
+      generated_at: p.generated_at ?? '',
+      pipeline: p.pipeline ?? {},
+      funnel: {
+        applied_total: p.funnel?.applied_total ?? 0,
+        responded: p.funnel?.responded ?? 0,
+        response_rate: p.funnel?.response_rate ?? 0,
+        offers: p.funnel?.offers ?? 0,
+      },
+      today: p.today ?? [],
+      matches: p.matches ?? [],
+      matches_total: p.matches_total ?? 0,
+      applications: p.applications ?? [],
+      followups: p.followups ?? [],
+    };
   } catch (err) {
     console.error('[turso] readSnapshot failed:', err);
     return null;
