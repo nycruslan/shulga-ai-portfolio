@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { createClient } from '@libsql/client';
 import { MockLanguageModelV3 } from 'ai/test';
 import type { LanguageModelV3GenerateResult } from '@ai-sdk/provider';
-import { auditCopy, auditCopyEntry, auditDue, initialAuditState } from './engine/audit';
+import {
+  auditCopy,
+  auditCopyEntry,
+  auditDue,
+  initialAuditState,
+  repairEmDashes,
+} from './engine/audit';
 import { runAuditCycle } from './audit-cycle';
 import { draftRevision } from './curator-draft';
 import { applyCopyChange, CURATED_PATH } from './github-write';
@@ -55,10 +61,21 @@ describe('audit rules', () => {
     expect(auditCopyEntry('k', 'First, we read. Then, we write and verify.')).toEqual([]);
   });
 
-  it('genuinely flags the seeded bridge_intro (the em dash is real)', () => {
-    const findings = auditCopy(curated as Record<string, string>);
-    const intro = findings.filter((f) => f.key === 'bridge_intro');
-    expect(intro.map((f) => f.rule)).toContain('em-dash');
+  it('the shipped copy registry passes its own audit (regression guard)', () => {
+    expect(auditCopy(curated as Record<string, string>)).toEqual([]);
+  });
+
+  it('repairEmDashes splits on dashes and leaves clean copy untouched', () => {
+    expect(repairEmDashes('A thing — another thing.')).toBe('A thing. Another thing.');
+    // Only continuations are recapitalised; the opening segment is left as-is.
+    expect(repairEmDashes('one – two – three')).toBe('one. Two. Three');
+    expect(repairEmDashes('No dashes here, just commas.')).toBe('No dashes here, just commas.');
+    // The result must satisfy the auditor it feeds.
+    expect(auditCopyEntry('k', repairEmDashes('Clean idea — but a dash.'))).toEqual([]);
+    // It only touches dashes: a buzzword still stands for the model to fix.
+    expect(auditCopyEntry('k', repairEmDashes('A robust idea — really.')).map((f) => f.rule)).toEqual(
+      ['buzzword'],
+    );
   });
 
   it('audit cadence is roughly daily', () => {
@@ -83,25 +100,37 @@ describe('draftRevision (Critic reviews Curator)', () => {
     expect(out).toMatchObject({ ok: true, newText: 'A thing. Another thing.', attempts: 1 });
   });
 
-  it('retries once when the first draft still violates, then accepts', async () => {
+  it('retries when the first draft still violates, then accepts', async () => {
     const out = await draftRevision({
       key: 'k',
       text: 'A thing — another thing.',
       findings,
-      model: mockDrafter('Still bad — see?', 'Fixed now. Clean copy.'),
+      // A buzzword the mechanical repair can't touch, so it genuinely retries.
+      model: mockDrafter('Still a robust draft.', 'Fixed now. Clean copy.'),
     });
     expect(out).toMatchObject({ ok: true, attempts: 2 });
   });
 
-  it('gives up after two rejected drafts, honestly', async () => {
+  it('mechanically repairs an em dash the model reintroduces, no retry needed', async () => {
     const out = await draftRevision({
       key: 'k',
       text: 'A thing — another thing.',
       findings,
-      model: mockDrafter('Bad — one.', 'Bad — two.'),
+      model: mockDrafter('Clean idea — but with a dash.'),
     });
-    expect(out).toMatchObject({ ok: false, attempts: 2 });
-    expect((out as { reason: string }).reason).toContain('rejected the draft twice');
+    expect(out).toMatchObject({ ok: true, attempts: 1 });
+    expect((out as { newText: string }).newText).not.toMatch(/[—–]/);
+  });
+
+  it('gives up after three rejected drafts, honestly', async () => {
+    const out = await draftRevision({
+      key: 'k',
+      text: 'A thing — another thing.',
+      findings,
+      model: mockDrafter('Bad robust one.', 'Bad robust two.', 'Bad robust three.'),
+    });
+    expect(out).toMatchObject({ ok: false, attempts: 3 });
+    expect((out as { reason: string }).reason).toContain('rejected the draft 3 times');
   });
 });
 
@@ -148,18 +177,19 @@ describe('runAuditCycle', () => {
     );
   });
 
-  it('logs the public disagreement when Critic rejects twice; no proposal filed', async () => {
+  it('logs the public disagreement when Critic keeps rejecting; no proposal filed', async () => {
     const client = db();
     const { events } = await runAuditCycle({
       client,
       entries: dirty,
       auditState: initialAuditState(),
-      draftModel: mockDrafter('still — bad', 'again — bad'),
+      // Buzzwords survive the mechanical repair, so Critic rejects every draft.
+      draftModel: mockDrafter('still robust', 'again robust'),
       nowIso: NOW,
     });
     expect(await listProposals(client)).toHaveLength(0);
     expect((await listMissions(client))[0].status).toBe('failed');
-    expect(events.some((e) => e.summary.includes('rejected the draft twice'))).toBe(true);
+    expect(events.some((e) => e.summary.includes('rejected the draft 3 times'))).toBe(true);
   });
 
   it('skips drafting but keeps auditing when no model is available', async () => {

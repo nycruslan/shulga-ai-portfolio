@@ -27,8 +27,13 @@ export type WorldStore<TWorld, TInteraction> = {
   isConfigured: () => boolean;
   readState: () => Promise<WorldStateRow<TWorld> | null>;
   acquireLock: (nowMs: number, ttlMs: number) => Promise<boolean>;
-  writeState: (world: TWorld, tickedAtIso: string) => Promise<void>;
-  releaseLock: () => Promise<void>;
+  // A lease token is just the lock_until value the holder set (nowMs + ttlMs).
+  // When passed, writeState/releaseLock only clear a lease this caller still
+  // owns, so a slow tick whose lease already expired can't wipe a successor's
+  // lock or overwrite its world. Omit it (Substrate/Garden, tests) to clear
+  // unconditionally as before.
+  writeState: (world: TWorld, tickedAtIso: string, lockToken?: number) => Promise<void>;
+  releaseLock: (lockToken?: number) => Promise<void>;
   enqueueInteraction: (it: TInteraction & { kind: string }) => Promise<boolean>;
   drainQueue: (limit?: number) => Promise<TInteraction[]>;
   llmCallsToday: () => Promise<number>;
@@ -126,32 +131,40 @@ export function createWorldStore<TWorld, TInteraction>(
     return rs.rowsAffected === 1;
   }
 
-  async function writeState(world: TWorld, tickedAtIso: string): Promise<void> {
+  async function writeState(world: TWorld, tickedAtIso: string, lockToken?: number): Promise<void> {
     if (!client) return;
     await ensureSchema();
+    const ownerClause = lockToken === undefined ? '' : ' AND lock_until = ?';
+    const args: (string | number)[] = [JSON.stringify(world), tickedAtIso, new Date().toISOString()];
+    if (lockToken !== undefined) args.push(lockToken);
     await client.execute({
-      sql: `UPDATE ${stateTable} SET version = version + 1, world = ?, ticked_at = ?, lock_until = 0, updated_at = ? WHERE id = 1`,
-      args: [JSON.stringify(world), tickedAtIso, new Date().toISOString()],
+      sql: `UPDATE ${stateTable} SET version = version + 1, world = ?, ticked_at = ?, lock_until = 0, updated_at = ? WHERE id = 1${ownerClause}`,
+      args,
     });
   }
 
-  async function releaseLock(): Promise<void> {
+  async function releaseLock(lockToken?: number): Promise<void> {
     if (!client) return;
     await ensureSchema();
-    await client.execute(`UPDATE ${stateTable} SET lock_until = 0 WHERE id = 1`);
+    const ownerClause = lockToken === undefined ? '' : ' AND lock_until = ?';
+    await client.execute({
+      sql: `UPDATE ${stateTable} SET lock_until = 0 WHERE id = 1${ownerClause}`,
+      args: lockToken === undefined ? [] : [lockToken],
+    });
   }
 
   async function enqueueInteraction(it: TInteraction & { kind: string }): Promise<boolean> {
     if (!client) return false;
     await ensureSchema();
-    // Hard cap bounds the queue even if the per-IP limiter is absent.
-    const count = await client.execute(`SELECT COUNT(*) AS n FROM ${queueTable}`);
-    if (Number(count.rows[0]?.n ?? 0) >= queueHardCap) return false;
-    await client.execute({
-      sql: `INSERT INTO ${queueTable} (created_at, kind, payload) VALUES (?, ?, ?)`,
-      args: [new Date().toISOString(), it.kind, JSON.stringify(it)],
+    // Hard cap bounds the queue even if the per-IP limiter is absent. A single
+    // conditional insert avoids the count-then-insert race that let two
+    // concurrent enqueues both pass the check.
+    const rs = await client.execute({
+      sql: `INSERT INTO ${queueTable} (created_at, kind, payload)
+            SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM ${queueTable}) < ?`,
+      args: [new Date().toISOString(), it.kind, JSON.stringify(it), queueHardCap],
     });
-    return true;
+    return rs.rowsAffected === 1;
   }
 
   // Drained inside the tick lock, so no race: read then delete.

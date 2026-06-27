@@ -91,6 +91,27 @@ describe('createWorldStore', () => {
     expect(await store.acquireLock(now + 1, 60_000)).toBe(true);
   });
 
+  it('an owner-checked write is a no-op once the lease has been taken over', async () => {
+    const { store } = makeStore();
+    const now = Date.now();
+    // Holder A takes a short lease, then it expires and successor B takes over.
+    expect(await store.acquireLock(now, 1000)).toBe(true);
+    const tokenA = now + 1000;
+    expect(await store.acquireLock(now + 2000, 60_000)).toBe(true);
+    const tokenB = now + 2000 + 60_000;
+
+    // A finishes late and tries to write with its stale token: rejected, so it
+    // can neither overwrite B's world nor clear B's lock.
+    await store.writeState({ tick: 99, note: 'late-A' }, new Date().toISOString(), tokenA);
+    expect((await store.readState())?.world.note).not.toBe('late-A');
+    await store.releaseLock(tokenA);
+    expect(await store.acquireLock(now + 3000, 60_000)).toBe(false); // B still holds it
+
+    // B writes with its own token: accepted, and the lock clears.
+    await store.writeState({ tick: 1, note: 'B' }, new Date().toISOString(), tokenB);
+    expect((await store.readState())?.world.note).toBe('B');
+  });
+
   it('queues and drains interactions in FIFO order', async () => {
     const { store } = makeStore();
     await store.enqueueInteraction({ kind: 'wave', value: 'a' });

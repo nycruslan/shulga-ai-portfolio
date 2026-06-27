@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createClient } from '@libsql/client';
 import { acquireLease, releaseLease, renewLease } from './leases';
-import { appendEvent, listEvents } from './events';
+import { appendEvent, countEventsSince, listEvents } from './events';
 import { daySpend, isOverBudget, recordSpend } from './budget';
 
 const db = () => createClient({ url: ':memory:' });
@@ -106,6 +106,41 @@ describe('events', () => {
     expect(first.map((e) => e.summary)).toEqual(['Tick 4.', 'Tick 5.']);
     const fromCursor = await listEvents(client, { afterId: 2 });
     expect(fromCursor.map((e) => e.summary)).toEqual(['Tick 3.', 'Tick 4.', 'Tick 5.']);
+  });
+
+  it('a polling cursor advances contiguously through a burst larger than the limit', async () => {
+    const client = db();
+    // Poller establishes a cursor on a quiet feed (newest window).
+    await appendEvent(client, { actor: 'engine', kind: 'tick', summary: 'Tick 1.' });
+    const fresh = await listEvents(client, { afterId: 0, limit: 2 });
+    expect(fresh.map((e) => e.id)).toEqual([1]);
+    // A burst arrives, larger than the poll limit. Paging from the cursor must
+    // hand back the OLDEST unseen first, so nothing in the gap is ever skipped.
+    for (let i = 2; i <= 6; i++) {
+      await appendEvent(client, { actor: 'engine', kind: 'tick', summary: `Tick ${i}.` });
+    }
+    let cursor = fresh.at(-1)!.id;
+    const seen: number[] = [];
+    for (let p = 0; p < 6; p++) {
+      const page = await listEvents(client, { afterId: cursor, limit: 2 });
+      if (!page.length) break;
+      seen.push(...page.map((e) => e.id));
+      cursor = page.at(-1)!.id;
+    }
+    expect(seen).toEqual([2, 3, 4, 5, 6]);
+  });
+
+  it('countEventsSince counts exactly, past any list limit', async () => {
+    const client = db();
+    for (let i = 0; i < 7; i++) {
+      await appendEvent(
+        client,
+        { actor: 'engine', kind: 'tick', summary: `e${i}` },
+        i < 3 ? '2026-06-26T23:00:00.000Z' : '2026-06-27T08:00:00.000Z',
+      );
+    }
+    expect(await countEventsSince(client, '2026-06-27T00:00:00.000Z')).toBe(4);
+    expect(await countEventsSince(client, '2026-06-26T00:00:00.000Z')).toBe(7);
   });
 });
 

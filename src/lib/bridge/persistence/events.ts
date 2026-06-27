@@ -60,15 +60,24 @@ export async function listEvents(
   { afterId = 0, limit = 50 }: ListEventsOptions = {},
 ): Promise<BridgeEvent[]> {
   await ensureBridgeSchema(client);
-  // Newest window first, then chronological within it, so a fresh feed shows
-  // the latest activity and the polling cursor still moves strictly forward.
-  const rs = await client.execute({
-    sql: `SELECT * FROM (
-            SELECT id, created_at, actor, kind, summary, detail, link, mission_id, generation_id
-            FROM bridge_events WHERE id > ? ORDER BY id DESC LIMIT ?
-          ) ORDER BY id ASC`,
-    args: [afterId, limit],
-  });
+  // A polling client (afterId > 0) needs the OLDEST unseen events first so the
+  // cursor advances contiguously: paging newest-first would skip everything
+  // beyond `limit` in a burst. A fresh feed (afterId 0) wants the newest window.
+  const rs = await client.execute(
+    afterId > 0
+      ? {
+          sql: `SELECT id, created_at, actor, kind, summary, detail, link, mission_id, generation_id
+                FROM bridge_events WHERE id > ? ORDER BY id ASC LIMIT ?`,
+          args: [afterId, limit],
+        }
+      : {
+          sql: `SELECT * FROM (
+                  SELECT id, created_at, actor, kind, summary, detail, link, mission_id, generation_id
+                  FROM bridge_events ORDER BY id DESC LIMIT ?
+                ) ORDER BY id ASC`,
+          args: [limit],
+        },
+  );
   return rs.rows.map((row) => ({
     id: Number(row.id),
     createdAt: String(row.created_at),
@@ -80,6 +89,16 @@ export async function listEvents(
     missionId: row.mission_id == null ? undefined : Number(row.mission_id),
     generationId: row.generation_id == null ? undefined : String(row.generation_id),
   }));
+}
+
+/** Exact count of events filed at or after an ISO timestamp (e.g. today). */
+export async function countEventsSince(client: Client, sinceIso: string): Promise<number> {
+  await ensureBridgeSchema(client);
+  const rs = await client.execute({
+    sql: `SELECT COUNT(*) AS n FROM bridge_events WHERE created_at >= ?`,
+    args: [sinceIso],
+  });
+  return Number(rs.rows[0]?.n ?? 0);
 }
 
 function safeParse(json: string): unknown {

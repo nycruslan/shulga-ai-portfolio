@@ -75,6 +75,30 @@ export function auditCopy(entries: Record<string, string>): CopyFinding[] {
   return Object.entries(entries).flatMap(([key, text]) => auditCopyEntry(key, text));
 }
 
+// House style for an em/en dash is "split the sentence". That fix is mechanical
+// and safe to do deterministically, which matters because the drafting model
+// (Sonnet) reliably re-introduces dashes even when told not to. Curator runs a
+// draft through this before Critic re-audits, so the single most common
+// rejection reason can't stall a fix on model luck. Triplets and buzzwords
+// still need the model's judgement and are left alone here.
+export function repairEmDashes(text: string): string {
+  if (!/[—–]/.test(text)) return text;
+  const segments = text.split(/\s*[—–]\s*/);
+  return segments
+    .map((segment, i) => {
+      const trimmed = segment.trim();
+      // Continuations become their own sentence: capitalise the first letter.
+      return i === 0
+        ? trimmed
+        : trimmed.replace(/^([^a-zA-Z]*)([a-z])/, (_, lead, c) => lead + c.toUpperCase());
+    })
+    .filter((s) => s.length > 0)
+    .join('. ')
+    .replace(/\.\s*\./g, '.') // a segment that already ended in '.' shouldn't double up
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export type AuditState = {
   lastAuditAt: string | null;
 };

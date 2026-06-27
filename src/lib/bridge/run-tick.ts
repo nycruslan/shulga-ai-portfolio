@@ -11,7 +11,7 @@ import {
 } from './engine/tick';
 import { planScoutEvents, scoutCheckDue } from './engine/scout';
 import { fetchUserActivity } from './github';
-import { appendEvent, listEvents } from './persistence/events';
+import { appendEvent, countEventsSince } from './persistence/events';
 import { daySpend, recordSpend } from './persistence/budget';
 import { NARRATOR_MODEL, narrate } from './narrate';
 import { estimateCostUsd } from './pricing';
@@ -25,7 +25,11 @@ import curated from '../../data/curated.json';
 // GitHub sweep when due, optionally narrate (one Haiku call, budget-gated),
 // persist. Called by /api/bridge/tick.
 
-const TICK_LOCK_MS = 30_000;
+// Long enough to cover the worst tick: a GitHub sweep, the audit-day Sonnet
+// draft, and a Haiku narration, with cold-start headroom. Far under Vercel's
+// function timeout. The lease is owner-checked on write, so even if this is
+// exceeded a successor's lock and world can't be clobbered.
+const TICK_LOCK_MS = 120_000;
 const GITHUB_USERNAME = about.github.split('/').pop() ?? 'nycruslan';
 
 export type TickOutcome =
@@ -43,6 +47,7 @@ export async function runTick(trigger: TickTrigger): Promise<TickOutcome> {
   const world = normalizeBridgeWorld(row.world, nowIso);
   if (!shouldTick(world, trigger, now.getTime())) return { ran: false, reason: 'cadence' };
 
+  const lockToken = now.getTime() + TICK_LOCK_MS;
   if (!(await bridgeStore.acquireLock(now.getTime(), TICK_LOCK_MS))) {
     return { ran: false, reason: 'locked' };
   }
@@ -50,8 +55,7 @@ export async function runTick(trigger: TickTrigger): Promise<TickOutcome> {
   try {
     const spend = await daySpend(turso, nowIso);
     const todayStart = `${nowIso.slice(0, 10)}T00:00:00.000Z`;
-    const recent = await listEvents(turso, { limit: 200 });
-    const eventsToday = recent.filter((e) => e.createdAt >= todayStart).length;
+    const eventsToday = await countEventsSince(turso, todayStart);
 
     // Scout's GitHub sweep, when due. Network failure becomes an honest status
     // line on the roster card ("GitHub isn't responding"), never a fake event.
@@ -113,8 +117,11 @@ export async function runTick(trigger: TickTrigger): Promise<TickOutcome> {
     // Optional voice pass. Facts are checked by narrate(); on any failure the
     // template lines ship as-is. The original line is preserved in detail for
     // the expandable layer-3 trace.
+    // Gate narration on the narrator's OWN spend, not the whole crew's, so
+    // heavy Envoy or Curator traffic (each capped separately) can't starve it.
     let narrated = false;
-    if (AI_GATEWAY_API_KEY && plan.narratable.length && spend.llmCalls < DAILY_NARRATION_CAP) {
+    const narratorCalls = (await daySpend(turso, nowIso, 'narrator')).llmCalls;
+    if (AI_GATEWAY_API_KEY && plan.narratable.length && narratorCalls < DAILY_NARRATION_CAP) {
       const result = await narrate(plan.narratable);
       if (result.usage) {
         narrated = true;
@@ -153,16 +160,20 @@ export async function runTick(trigger: TickTrigger): Promise<TickOutcome> {
       });
     }
 
+    // Persist the advanced world (tick counter AND scout cursor) BEFORE filing
+    // events. A crash between the two loses at most this tick's events; it can
+    // never re-file a finding the cursor already moved past, which would mint a
+    // duplicate. The owner-checked write also drops cleanly if the lease lapsed.
     const allEvents = [...preTickEvents, ...plan.events];
+    await bridgeStore.writeState(plan.world, nowIso, lockToken);
     for (const event of allEvents) {
       await appendEvent(turso, event, nowIso);
     }
-    await bridgeStore.writeState(plan.world, nowIso);
 
     return { ran: true, tick: plan.world.tick, events: allEvents.length, narrated };
   } catch (err) {
     console.error('[bridge] tick failed:', err);
-    await bridgeStore.releaseLock();
+    await bridgeStore.releaseLock(lockToken);
     return { ran: false, reason: 'error' };
   }
 }
