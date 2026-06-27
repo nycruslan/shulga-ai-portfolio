@@ -65,10 +65,6 @@ export const CREW: CrewMember[] = [
   },
 ];
 
-export const CREW_BY_ID: Record<CrewId, CrewMember> = Object.fromEntries(
-  CREW.map((m) => [m.id, m]),
-) as Record<CrewId, CrewMember>;
-
 // The mission board, Phase 1 edition: the build roadmap itself, kept truthful.
 // Later phases move missions into the bridge_missions table; until then the
 // only honest missions are the ones you are literally watching get built.

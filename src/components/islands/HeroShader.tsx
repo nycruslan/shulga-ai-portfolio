@@ -246,12 +246,6 @@ export default function HeroShader() {
           preserveAspectRatio="xMidYMid slice"
           style={{ opacity: 0.5 }}
         >
-          <defs>
-            <radialGradient id="nodeGrad" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#cdd2d8" stopOpacity="1" />
-              <stop offset="100%" stopColor="#cdd2d8" stopOpacity="0" />
-            </radialGradient>
-          </defs>
           {Array.from({ length: 24 }).map((_, i) => {
             const x = (i % 6) * 130 + 80 + ((i * 37) % 40);
             const y = Math.floor(i / 6) * 110 + 70 + ((i * 53) % 30);

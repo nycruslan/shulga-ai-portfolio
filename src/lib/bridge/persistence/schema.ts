@@ -64,13 +64,6 @@ export const BRIDGE_SCHEMA = [
      PRIMARY KEY (day, agent)
    )`,
 
-  // Named lease locks (tick, audit, ...) with compare-and-set acquisition.
-  `CREATE TABLE IF NOT EXISTS bridge_leases (
-     name TEXT PRIMARY KEY,
-     holder TEXT NOT NULL DEFAULT '',
-     lease_until INTEGER NOT NULL DEFAULT 0
-   )`,
-
   // Curator's copy-change proposals: drafted by the crew, decided by Ruslan,
   // shipped as real commits. The queue is durable because the approver is a
   // human on his own schedule, not the visitor in a chat stream.
@@ -90,7 +83,7 @@ export const BRIDGE_SCHEMA = [
    )`,
 ];
 
-let ready: WeakMap<Client, Promise<void>> = new WeakMap();
+const ready: WeakMap<Client, Promise<void>> = new WeakMap();
 
 export function ensureBridgeSchema(client: Client): Promise<void> {
   let p = ready.get(client);
@@ -99,9 +92,4 @@ export function ensureBridgeSchema(client: Client): Promise<void> {
     ready.set(client, p);
   }
   return p;
-}
-
-/** Test hook: forget memoized schema state (e.g. after dropping tables). */
-export function resetSchemaCache(): void {
-  ready = new WeakMap();
 }

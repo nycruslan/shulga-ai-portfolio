@@ -1,64 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createClient } from '@libsql/client';
-import { acquireLease, releaseLease, renewLease } from './leases';
 import { appendEvent, countEventsSince, listEvents } from './events';
 import { daySpend, isOverBudget, recordSpend } from './budget';
 
 const db = () => createClient({ url: ':memory:' });
-
-describe('leases', () => {
-  it('grants a free lease and refuses a held one', async () => {
-    const client = db();
-    const now = Date.now();
-    expect(await acquireLease(client, 'tick', 'a', 60_000, now)).toBe(true);
-    expect(await acquireLease(client, 'tick', 'b', 60_000, now + 1)).toBe(false);
-  });
-
-  it('grants exactly one of two racing callers', async () => {
-    const client = db();
-    const now = Date.now();
-    const [a, b] = await Promise.all([
-      acquireLease(client, 'tick', 'a', 60_000, now),
-      acquireLease(client, 'tick', 'b', 60_000, now),
-    ]);
-    expect([a, b].filter(Boolean)).toHaveLength(1);
-  });
-
-  it('lets an expired lease be taken over', async () => {
-    const client = db();
-    const now = Date.now();
-    expect(await acquireLease(client, 'tick', 'a', 1000, now)).toBe(true);
-    expect(await acquireLease(client, 'tick', 'b', 1000, now + 1001)).toBe(true);
-  });
-
-  it('keeps independent named leases independent', async () => {
-    const client = db();
-    const now = Date.now();
-    expect(await acquireLease(client, 'tick', 'a', 60_000, now)).toBe(true);
-    expect(await acquireLease(client, 'audit', 'a', 60_000, now)).toBe(true);
-  });
-
-  it('renews only for the current holder', async () => {
-    const client = db();
-    const now = Date.now();
-    await acquireLease(client, 'tick', 'a', 1000, now);
-    expect(await renewLease(client, 'tick', 'a', 60_000, now + 500)).toBe(true);
-    expect(await renewLease(client, 'tick', 'b', 60_000, now + 500)).toBe(false);
-    // Renewal extended the lease well past the original TTL.
-    expect(await acquireLease(client, 'tick', 'b', 1000, now + 2000)).toBe(false);
-  });
-
-  it('release is a no-op for a stale holder, so a slow holder cannot stomp a successor', async () => {
-    const client = db();
-    const now = Date.now();
-    await acquireLease(client, 'tick', 'a', 1000, now);
-    await acquireLease(client, 'tick', 'b', 60_000, now + 1001); // a expired, b took over
-    await releaseLease(client, 'tick', 'a'); // stale release
-    expect(await acquireLease(client, 'tick', 'c', 1000, now + 1002)).toBe(false);
-    await releaseLease(client, 'tick', 'b');
-    expect(await acquireLease(client, 'tick', 'c', 1000, now + 1003)).toBe(true);
-  });
-});
 
 describe('events', () => {
   it('appends and lists events with full payload round-trip', async () => {

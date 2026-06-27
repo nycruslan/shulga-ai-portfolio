@@ -52,8 +52,6 @@ export const about = {
     'Senior or staff-level AI platform roles, founding engineer spots. Places where the work is shipping AI infrastructure that real people depend on.',
 };
 
-export type About = typeof about;
-
 export const systemPrompt = `You are the portfolio assistant on Ruslan Shulga's site (ruslanshulga.com). You answer visitor questions about Ruslan's professional work and career. You speak ABOUT him, never AS him.
 
 ## Voice

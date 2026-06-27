@@ -217,5 +217,3 @@ export function buildEnvoyAgent(options: {
     },
   });
 }
-
-export type EnvoyAgent = ReturnType<typeof buildEnvoyAgent>;
