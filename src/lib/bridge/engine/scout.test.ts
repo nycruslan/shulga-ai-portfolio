@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { parseEvents, type ScoutActivity } from '../github';
+import { parseEvents, type CiRun, type ScoutActivity } from '../github';
 import {
+  activeCiAlert,
   BRIEF_INTERVAL_MS,
   buildWeeklyBrief,
+  humanizeDurationMs,
   initialScoutState,
+  planCiEvents,
   planScoutEvents,
   scoutCheckDue,
   SCOUT_CHECK_INTERVAL_MS,
@@ -204,6 +207,117 @@ describe('scoutCheckDue', () => {
     state.lastCheckedAt = NOW;
     expect(scoutCheckDue(state, Date.parse(NOW) + SCOUT_CHECK_INTERVAL_MS - 1)).toBe(false);
     expect(scoutCheckDue(state, Date.parse(NOW) + SCOUT_CHECK_INTERVAL_MS)).toBe(true);
+  });
+});
+
+const ciRun = (over: Partial<CiRun>): CiRun => ({
+  id: 900,
+  workflow: 'ci',
+  title: 'feat: something real',
+  status: 'completed',
+  conclusion: 'success',
+  url: 'https://github.com/nycruslan/portfolio-copilot/actions/runs/900',
+  startedAt: later(NOW, -600_000),
+  ...over,
+});
+const REPO = 'nycruslan/portfolio-copilot';
+
+describe('planCiEvents', () => {
+  it('records a first-seen green branch silently', () => {
+    const plan = planCiEvents([{ repo: REPO, run: ciRun({}) }], initialScoutState(), NOW);
+    expect(plan.events).toHaveLength(0);
+    expect(plan.state.ci[REPO].conclusion).toBe('success');
+    expect(activeCiAlert(plan.state)).toBeNull();
+  });
+
+  it('files a red alert when a branch is red on first observation', () => {
+    const run = ciRun({ conclusion: 'failure', startedAt: '2026-06-12T03:32:00Z' });
+    const plan = planCiEvents([{ repo: REPO, run }], initialScoutState(), NOW);
+    expect(plan.events).toHaveLength(1);
+    expect(plan.events[0].kind).toBe('ci');
+    expect(plan.events[0].summary).toContain('Red alert');
+    expect(plan.events[0].summary).toContain('portfolio-copilot');
+    expect(plan.events[0].summary).toContain('03:32Z');
+    expect(plan.events[0].link).toBe(run.url);
+    expect(plan.state.ci[REPO].redSince).toBe('2026-06-12T03:32:00Z');
+    expect(activeCiAlert(plan.state)?.repo).toBe(REPO);
+  });
+
+  it('files one alert on green→red and stays quiet while red persists', () => {
+    let plan = planCiEvents([{ repo: REPO, run: ciRun({}) }], initialScoutState(), NOW);
+    plan = planCiEvents(
+      [{ repo: REPO, run: ciRun({ id: 901, conclusion: 'failure' }) }],
+      plan.state,
+      later(NOW, 3600_000),
+    );
+    expect(plan.events).toHaveLength(1);
+    // A second failing run: still red, no fresh alarm, but redSince holds.
+    const redSince = plan.state.ci[REPO].redSince;
+    plan = planCiEvents(
+      [{ repo: REPO, run: ciRun({ id: 902, conclusion: 'failure' }) }],
+      plan.state,
+      later(NOW, 7200_000),
+    );
+    expect(plan.events).toHaveLength(0);
+    expect(plan.state.ci[REPO].redSince).toBe(redSince);
+    expect(plan.state.ci[REPO].runId).toBe(902);
+  });
+
+  it('files a recovery with the real downtime on red→green', () => {
+    const red = ciRun({ id: 901, conclusion: 'failure', startedAt: NOW });
+    let plan = planCiEvents([{ repo: REPO, run: red }], initialScoutState(), NOW);
+    const threeDays = later(NOW, 3 * 24 * 3600_000);
+    plan = planCiEvents([{ repo: REPO, run: ciRun({ id: 902 }) }], plan.state, threeDays);
+    expect(plan.events).toHaveLength(1);
+    expect(plan.events[0].summary).toContain('Condition green');
+    expect(plan.events[0].summary).toContain('after 3d');
+    expect(plan.state.ci[REPO].redSince).toBeNull();
+    expect(activeCiAlert(plan.state)).toBeNull();
+  });
+
+  it('ignores unfinished runs and non-verdict conclusions', () => {
+    const red = planCiEvents(
+      [{ repo: REPO, run: ciRun({ id: 901, conclusion: 'failure' }) }],
+      initialScoutState(),
+      NOW,
+    );
+    const plan = planCiEvents(
+      [
+        { repo: REPO, run: ciRun({ id: 902, status: 'in_progress', conclusion: null }) },
+        { repo: REPO, run: ciRun({ id: 903, conclusion: 'cancelled' }) },
+      ],
+      red.state,
+      later(NOW, 1000),
+    );
+    expect(plan.events).toHaveLength(0);
+    expect(plan.state.ci[REPO].conclusion).toBe('failure'); // the alert stands
+  });
+
+  it('re-observing the same run id changes nothing', () => {
+    const run = ciRun({});
+    let plan = planCiEvents([{ repo: REPO, run }], initialScoutState(), NOW);
+    plan = planCiEvents([{ repo: REPO, run }], plan.state, later(NOW, 1000));
+    expect(plan.events).toHaveLength(0);
+  });
+
+  it('upgrades a pre-CI scout state (no ci map) without crashing', () => {
+    const legacy = initialScoutState() as Record<string, unknown>;
+    delete legacy.ci;
+    const plan = planCiEvents(
+      [{ repo: REPO, run: ciRun({}) }],
+      legacy as ReturnType<typeof initialScoutState>,
+      NOW,
+    );
+    expect(plan.state.ci[REPO].conclusion).toBe('success');
+  });
+});
+
+describe('humanizeDurationMs', () => {
+  it('rounds to minutes, hours, then days', () => {
+    expect(humanizeDurationMs(30_000)).toBe('1m');
+    expect(humanizeDurationMs(41 * 60_000)).toBe('41m');
+    expect(humanizeDurationMs(12 * 3600_000)).toBe('12h');
+    expect(humanizeDurationMs(3 * 24 * 3600_000)).toBe('3d');
   });
 });
 

@@ -9,8 +9,8 @@ import {
   shouldTick,
   type TickTrigger,
 } from './engine/tick';
-import { planScoutEvents, scoutCheckDue } from './engine/scout';
-import { fetchUserActivity } from './github';
+import { planCiEvents, planScoutEvents, scoutCheckDue } from './engine/scout';
+import { fetchLatestCiRun, fetchUserActivity, type CiRun } from './github';
 import { appendEvent, countEventsSince } from './persistence/events';
 import { daySpend, recordSpend } from './persistence/budget';
 import { NARRATOR_MODEL, narrate } from './narrate';
@@ -19,6 +19,8 @@ import { failStaleMissions } from './persistence/missions';
 import { auditDue } from './engine/audit';
 import { runAuditCycle } from './audit-cycle';
 import { DRAFT_MODEL } from './curator-draft';
+import { SHIP_NOTE_DAILY_CAP, SHIP_NOTE_MODEL, writeShipNote } from './ship-note';
+import { getCorpus } from '../portfolio-content';
 import curated from '../../data/curated.json';
 
 // Thin orchestrator around the pure tick engine: lock, plan, run Scout's
@@ -31,6 +33,33 @@ import curated from '../../data/curated.json';
 // exceeded a successor's lock and world can't be clobbered.
 const TICK_LOCK_MS = 120_000;
 const GITHUB_USERNAME = about.github.split('/').pop() ?? 'nycruslan';
+
+// Branches Scout keeps a CI watch on. One API call per repo per sweep. The
+// events feed can't cover this: workflow runs never appear in a user's public
+// event stream, which is how a three-day-red build once went unreported while
+// Scout kept saying "sensors green".
+const CI_WATCHED = [
+  { repo: `${GITHUB_USERNAME}/shulga-ai-portfolio`, branch: 'master' },
+  { repo: `${GITHUB_USERNAME}/portfolio-copilot`, branch: 'main' },
+];
+
+/**
+ * The read-only copy surface for Critic's site-wide sweep: every corpus chunk
+ * (about fields + case-study sections), keyed stably so findings fingerprint
+ * across days. Code fences are stripped — a dash in a code sample is not
+ * prose. Failure degrades to a curated-only audit, never a dead tick.
+ */
+async function buildReadOnlySurface(): Promise<Record<string, string>> {
+  try {
+    const corpus = await getCorpus();
+    return Object.fromEntries(
+      corpus.map((c) => [`${c.source}#${c.title}`, c.text.replace(/```[\s\S]*?```/g, '')]),
+    );
+  } catch (err) {
+    console.error('[bridge] read-only copy surface failed:', err);
+    return {};
+  }
+}
 
 export type TickOutcome =
   | { ran: false; reason: 'unconfigured' | 'cadence' | 'locked' | 'error' }
@@ -62,6 +91,8 @@ export async function runTick(trigger: TickTrigger): Promise<TickOutcome> {
     // Events are collected here and written below with the tick's own events,
     // so a mid-tick crash cannot file findings without advancing the cursor.
     const preTickEvents = [];
+    // Fresh pushes Scout files this tick; Curator may write a ship note on it.
+    let shipCandidate: { repo: string; titles: string[]; url: string } | null = null;
     if (scoutCheckDue(world.scout, now.getTime())) {
       try {
         const activity = await fetchUserActivity(GITHUB_USERNAME, world.scout.cursor, GITHUB_TOKEN);
@@ -73,11 +104,78 @@ export async function runTick(trigger: TickTrigger): Promise<TickOutcome> {
           const latest = scoutPlan.events.at(-1)!;
           world.crew.scout = { status: latest.summary, lastSpokeTick: world.tick };
         }
+        const pushed = scoutPlan.events.findLast(
+          (e) => e.kind === 'github' && !!(e.detail as { pushes?: unknown[] })?.pushes,
+        );
+        if (pushed) {
+          const pushes = (pushed.detail as { pushes: Array<{ title: string }> }).pushes;
+          shipCandidate = {
+            repo: world.scout.lastCommit?.repo ?? '',
+            titles: pushes.map((p) => p.title),
+            url: pushed.link ?? '',
+          };
+        }
       } catch (err) {
         console.error('[bridge] scout sweep failed:', err);
         world.scout.lastCheckedAt = nowIso;
         world.scout.lastError = "GitHub isn't responding.";
         world.crew.scout.status = "GitHub isn't responding. Retrying next sweep.";
+      }
+
+      // CI condition check rides the same cadence. Per-repo failures degrade
+      // silently to "checked next sweep" — a flaky API call must never file a
+      // false alert or clear a real one.
+      const observed: Array<{ repo: string; run: CiRun }> = [];
+      for (const watched of CI_WATCHED) {
+        try {
+          const run = await fetchLatestCiRun(watched.repo, watched.branch, GITHUB_TOKEN);
+          if (run) observed.push({ repo: watched.repo, run });
+        } catch (err) {
+          console.error(`[bridge] ci check failed (${watched.repo}):`, err);
+        }
+      }
+      if (observed.length) {
+        const ciPlan = planCiEvents(observed, world.scout, nowIso);
+        world.scout = ciPlan.state;
+        preTickEvents.push(...ciPlan.events);
+        if (ciPlan.events.length) {
+          const latest = ciPlan.events.at(-1)!;
+          world.crew.scout = { status: latest.summary, lastSpokeTick: world.tick };
+        }
+      }
+    }
+
+    // Curator's ship note: one Haiku call turning fresh commit subjects into a
+    // visitor-readable line, gated on Curator's own budget and dropped whole
+    // if it fails the deterministic review. Never blocks the tick.
+    if (shipCandidate?.repo && AI_GATEWAY_API_KEY) {
+      const curatorCalls = (await daySpend(turso, nowIso, 'curator')).llmCalls;
+      if (curatorCalls < SHIP_NOTE_DAILY_CAP) {
+        const shipNote = await writeShipNote({
+          repo: shipCandidate.repo,
+          titles: shipCandidate.titles,
+        });
+        if (shipNote) {
+          await recordSpend(
+            turso,
+            {
+              agent: 'curator',
+              inputTokens: shipNote.usage.inputTokens,
+              outputTokens: shipNote.usage.outputTokens,
+              costUsd: estimateCostUsd(SHIP_NOTE_MODEL, shipNote.usage),
+            },
+            nowIso,
+          );
+          preTickEvents.push({
+            actor: 'curator',
+            kind: 'ship',
+            summary: shipNote.note,
+            link: shipCandidate.url || undefined,
+            generationId: shipNote.generationId,
+            detail: { commits: shipCandidate.titles, repo: shipCandidate.repo },
+          });
+          world.crew.curator = { status: shipNote.note, lastSpokeTick: world.tick };
+        }
       }
     }
 
@@ -90,6 +188,7 @@ export async function runTick(trigger: TickTrigger): Promise<TickOutcome> {
         const cycle = await runAuditCycle({
           client: turso,
           entries: curated as Record<string, string>,
+          readOnly: await buildReadOnlySurface(),
           auditState: world.audit,
           draftModel: AI_GATEWAY_API_KEY ? DRAFT_MODEL : null,
           nowIso,

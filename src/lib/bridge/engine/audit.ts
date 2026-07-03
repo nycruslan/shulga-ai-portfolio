@@ -75,6 +75,20 @@ export function auditCopy(entries: Record<string, string>): CopyFinding[] {
   return Object.entries(entries).flatMap(([key, text]) => auditCopyEntry(key, text));
 }
 
+/**
+ * The read-only sweep: everything on the site Critic can see but not edit
+ * (about fields, case-study sections). Same rules minus 'length' — the 400
+ * char cap is for curated blurbs; long-form case studies are allowed to be
+ * long. Findings here are flagged publicly, never drafted: the write path is
+ * whitelisted to curated.json and honesty forbids pretending otherwise.
+ */
+export function auditReadOnlyCopy(entries: Record<string, string>): CopyFinding[] {
+  return auditCopy(entries).filter((f) => f.rule !== 'length');
+}
+
+/** Stable identity for a finding, for don't-refile-daily bookkeeping. */
+export const findingFingerprint = (f: CopyFinding): string => `${f.key}:${f.rule}`;
+
 // House style for an em/en dash is "split the sentence". That fix is mechanical
 // and safe to do deterministically, which matters because the drafting model
 // (Sonnet) reliably re-introduces dashes even when told not to. Curator runs a
@@ -101,9 +115,12 @@ export function repairEmDashes(text: string): string {
 
 export type AuditState = {
   lastAuditAt: string | null;
+  /** Fingerprints of read-only findings already filed, so a standing finding
+      is one log entry, not a daily drumbeat. Cleared when the copy is fixed. */
+  reported: string[];
 };
 
-export const initialAuditState = (): AuditState => ({ lastAuditAt: null });
+export const initialAuditState = (): AuditState => ({ lastAuditAt: null, reported: [] });
 
 export const AUDIT_INTERVAL_MS = 20 * 3600_000; // ~daily, tolerant of heartbeat drift
 

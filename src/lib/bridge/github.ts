@@ -105,6 +105,64 @@ function headers(token?: string): Record<string, string> {
   };
 }
 
+// --- CI sensor -------------------------------------------------------------
+// Scout's second instrument: the latest Actions run on each watched default
+// branch. One request per repo per sweep, so even unauthenticated (60/h) the
+// budget is never in danger at the 30-minute check interval.
+
+export type CiRun = {
+  id: number;
+  /** Workflow name, e.g. "ci". */
+  workflow: string;
+  /** The run's display title (usually the commit subject). */
+  title: string;
+  status: 'queued' | 'in_progress' | 'completed' | string;
+  conclusion: string | null;
+  url: string;
+  startedAt: string;
+};
+
+type WorkflowRunsResponse = {
+  workflow_runs?: Array<{
+    id: number;
+    name: string | null;
+    display_title: string | null;
+    status: string;
+    conclusion: string | null;
+    html_url: string;
+    run_started_at: string;
+  }>;
+};
+
+/**
+ * Latest workflow run on a branch, or null when the repo has none. Throws on
+ * network/API failure; the caller degrades to an honest status line, exactly
+ * like the events sweep.
+ */
+export async function fetchLatestCiRun(
+  repo: string,
+  branch: string,
+  token?: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<CiRun | null> {
+  const res = await fetchImpl(
+    `${API}/repos/${repo}/actions/runs?branch=${encodeURIComponent(branch)}&per_page=1&exclude_pull_requests=true`,
+    { headers: headers(token) },
+  );
+  if (!res.ok) throw new Error(`GitHub runs API (${repo}): HTTP ${res.status}`);
+  const run = ((await res.json()) as WorkflowRunsResponse).workflow_runs?.[0];
+  if (!run) return null;
+  return {
+    id: run.id,
+    workflow: run.name ?? 'workflow',
+    title: run.display_title ?? '',
+    status: run.status,
+    conclusion: run.conclusion,
+    url: run.html_url,
+    startedAt: run.run_started_at,
+  };
+}
+
 const ENRICH_CAP = 4;
 
 /**

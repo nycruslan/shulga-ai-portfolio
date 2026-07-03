@@ -6,6 +6,8 @@ import {
   auditCopy,
   auditCopyEntry,
   auditDue,
+  auditReadOnlyCopy,
+  findingFingerprint,
   initialAuditState,
   repairEmDashes,
 } from './engine/audit';
@@ -134,6 +136,23 @@ describe('draftRevision (Critic reviews Curator)', () => {
   });
 });
 
+describe('read-only sweep rules', () => {
+  it('keeps dash/buzzword/triplet findings but never flags length', () => {
+    const entries = {
+      'work/x#Long': 'y'.repeat(500),
+      'about#Summary': 'A robust thing — it parses, validates, and ships.',
+    };
+    const rules = auditReadOnlyCopy(entries).map((f) => f.rule);
+    expect(rules).not.toContain('length');
+    expect(rules).toEqual(expect.arrayContaining(['em-dash', 'buzzword', 'triplet']));
+  });
+
+  it('fingerprints are stable per key and rule', () => {
+    const [f] = auditReadOnlyCopy({ 'about#Summary': 'A dash — here.' });
+    expect(findingFingerprint(f)).toBe('about#Summary:em-dash');
+  });
+});
+
 describe('runAuditCycle', () => {
   const dirty = { intro: 'We leverage a robust platform — seamlessly.' };
   const clean = { intro: 'Plain copy. Nothing to flag.' };
@@ -151,6 +170,74 @@ describe('runAuditCycle', () => {
     expect(events).toHaveLength(1);
     expect(events[0].summary).toContain('0 findings');
     expect(await listProposals(client)).toHaveLength(0);
+  });
+
+  it('flags read-only findings once, then holds until the copy changes', async () => {
+    const client = db();
+    const readOnly = { 'about#Summary': 'A seamless dash — everywhere.' };
+
+    const first = await runAuditCycle({
+      client,
+      entries: clean,
+      readOnly,
+      auditState: initialAuditState(),
+      draftModel: mockDrafter('unused'),
+      nowIso: NOW,
+    });
+    const sweep = first.events.find((e) => e.summary.includes('Site-wide sweep'));
+    expect(sweep).toBeDefined();
+    expect(sweep!.summary).toContain('2 new findings'); // em-dash + buzzword
+    expect(sweep!.summary).toContain('flagged for Ruslan');
+    // No proposal or mission: read-only findings are outside the write path.
+    expect(await listProposals(client)).toHaveLength(0);
+    expect(await listMissions(client)).toHaveLength(0);
+
+    // Same findings next day: no repeat drumbeat, and no clean-audit claim.
+    const second = await runAuditCycle({
+      client,
+      entries: clean,
+      readOnly,
+      auditState: first.state,
+      draftModel: mockDrafter('unused'),
+      nowIso: NOW,
+    });
+    expect(second.events).toHaveLength(0);
+
+    // Fixed copy clears the fingerprint; a relapse would file again.
+    const third = await runAuditCycle({
+      client,
+      entries: clean,
+      readOnly: { 'about#Summary': 'Fixed. Plain and calm.' },
+      auditState: second.state,
+      draftModel: mockDrafter('unused'),
+      nowIso: NOW,
+    });
+    expect(third.state.reported).toEqual([]);
+    expect(third.events[0].summary).toContain('Copy audit clean');
+    expect(third.events[0].summary).toContain('1 site sources');
+
+    const relapse = await runAuditCycle({
+      client,
+      entries: clean,
+      readOnly,
+      auditState: third.state,
+      draftModel: mockDrafter('unused'),
+      nowIso: NOW,
+    });
+    expect(relapse.events[0].summary).toContain('Site-wide sweep');
+  });
+
+  it('upgrades a pre-sweep audit state (no reported list) without crashing', async () => {
+    const legacy = { lastAuditAt: null } as ReturnType<typeof initialAuditState>;
+    const { state } = await runAuditCycle({
+      client: db(),
+      entries: clean,
+      readOnly: { 'about#Summary': 'A dash — here.' },
+      auditState: legacy,
+      draftModel: mockDrafter('unused'),
+      nowIso: NOW,
+    });
+    expect(state.reported).toEqual(['about#Summary:em-dash']);
   });
 
   it('full cycle: finding -> draft -> Critic sign-off -> pending proposal + awaiting mission', async () => {

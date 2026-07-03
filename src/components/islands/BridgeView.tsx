@@ -13,7 +13,16 @@ import curated from '../../data/curated.json';
 // DUTY is computed, never asserted; idle is shown as idle, not faked over.
 
 const POLL_MS = 4000;
-const CHANNEL_KINDS = new Set(['channel', 'visitor', 'github', 'brief', 'mission', 'audit']);
+const CHANNEL_KINDS = new Set([
+  'channel',
+  'visitor',
+  'github',
+  'brief',
+  'mission',
+  'audit',
+  'ci',
+  'ship',
+]);
 
 type Props = { initial: BridgeFeedPayload };
 
@@ -233,6 +242,7 @@ export default function BridgeView({ initial }: Props) {
         events={channelEvents}
         spend={feed.spend}
         shipped={feed.shipped}
+        alert={feed.alert ?? null}
         live={live}
         replay={replayCutoff !== null}
         nowMs={nowMs}

@@ -30,6 +30,11 @@
      bg. Tokenized so it stops being hardcoded in six components. */
   --color-warning: #e2a04a;
 
+  /* Hard-failure red, reserved for the deck's red alert (a real CI failure on
+     a watched branch). ~5.9:1 on bg — AA for the small alert text it colors. */
+  --color-danger: #f07878;
+  --color-danger-dim: #8f4040; /* decorative borders/washes only */
+
   /* Two easing personalities. expo for expressive reveals; standard (M3) for
      interactive state changes — hovers, presses, focus. */
   --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
@@ -623,12 +628,29 @@ body::before {
   animation: deck-led 2.2s ease-in-out infinite;
 }
 
+/* Red alert: a slow klaxon breathe on the deck edges and the scout LED while
+   a watched branch is genuinely red. Slower than a real klaxon on purpose —
+   it has to stay readable for however long the failure lasts. */
+@keyframes deck-alert {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.deck-alert-pulse {
+  animation: deck-alert 1.8s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .deck-sweep,
   .deck-wave-bar,
   .deck-caret,
   .deck-scanline,
-  .deck-led-live {
+  .deck-led-live,
+  .deck-alert-pulse {
     animation: none !important;
   }
 }
