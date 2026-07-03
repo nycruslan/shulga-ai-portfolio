@@ -1,6 +1,6 @@
 import type { BridgeEventInput } from '../persistence/events';
 import { CREW, type CrewId } from '../crew';
-import { initialScoutState, type ScoutState } from './scout';
+import { activeCiAlert, initialScoutState, type ScoutState } from './scout';
 import { initialAuditState, type AuditState } from './audit';
 
 // The deterministic heart of the Bridge. planTick is a pure function: given
@@ -109,12 +109,18 @@ const AMBIENT_LINES: LineTemplate[] = [
   },
   {
     actor: 'scout',
-    build: (_t, w) =>
-      w.scout.lastError
+    build: (_t, w) => {
+      const alert = activeCiAlert(w.scout);
+      if (alert) {
+        const since = alert.redSince ? ` since ${alert.redSince.slice(11, 16)}Z` : '';
+        return `Red alert. CI failing on ${alert.repo.split('/')[1]}${since}.`;
+      }
+      return w.scout.lastError
         ? `${w.scout.lastError} Retrying next sweep.`
         : w.scout.lastCommit
           ? `Sensors green. Last push: ${w.scout.lastCommit.repo.split('/')[1]} at ${w.scout.lastCommit.at.slice(11, 16)}Z.`
-          : 'Sensors green. Watching the GitHub feed; nothing new yet.',
+          : 'Sensors green. Watching the GitHub feed; nothing new yet.';
+    },
   },
   {
     actor: 'envoy',

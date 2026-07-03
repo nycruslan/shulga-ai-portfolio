@@ -1,5 +1,5 @@
 import type { BridgeEventInput } from '../persistence/events';
-import type { ScoutActivity } from '../github';
+import type { CiRun, ScoutActivity } from '../github';
 
 // Scout's pure planning layer. Given freshly fetched GitHub activity and the
 // previous state, decide which events to file and how state advances. Rules:
@@ -8,6 +8,17 @@ import type { ScoutActivity } from '../github';
 // timestamp; first run after deploy is capped so the log is not flooded with
 // history; once a week, with enough material, Scout files a shipped brief
 // built purely from recorded activity.
+
+export type CiRepoState = {
+  /** Latest completed run observed (dedupe cursor). */
+  runId: number;
+  conclusion: 'success' | 'failure';
+  /** When the branch first went red (run_started_at of the failing run). */
+  redSince: string | null;
+  workflow: string;
+  title: string;
+  url: string;
+};
 
 export type ScoutState = {
   /** Newest GitHub event id seen (numeric string). */
@@ -19,6 +30,8 @@ export type ScoutState = {
   recent: ScoutActivity[];
   /** Honest failure surface for the roster card. */
   lastError: string | null;
+  /** CI condition per watched repo, keyed by "owner/name". */
+  ci: Record<string, CiRepoState>;
 };
 
 export const initialScoutState = (): ScoutState => ({
@@ -28,6 +41,7 @@ export const initialScoutState = (): ScoutState => ({
   lastBriefAt: null,
   recent: [],
   lastError: null,
+  ci: {},
 });
 
 export const SCOUT_CHECK_INTERVAL_MS = 30 * 60_000;
@@ -113,6 +127,86 @@ export function planScoutEvents(
       events.push(buildWeeklyBrief(inWindow, nowIso));
       state.lastBriefAt = nowIso;
     }
+  }
+
+  return { events, state };
+}
+
+// --- CI condition tracking ---------------------------------------------------
+// Scout's second instrument. Pure transition logic: events fire only when a
+// watched branch CHANGES condition (green→red, red→green), never on every
+// sweep, so a long outage is one alert and one recovery, not a daily drumbeat.
+// A branch that is already red when first observed still files — a visitor
+// deserves to know the current condition, not just future transitions.
+
+const repoShort = (repo: string) => repo.split('/')[1] ?? repo;
+
+/** Humanize a duration for recovery lines: "41m", "12h", "3d". */
+export function humanizeDurationMs(ms: number): string {
+  const min = Math.max(1, Math.round(ms / 60_000));
+  if (min < 60) return `${min}m`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}h`;
+  return `${Math.round(hr / 24)}d`;
+}
+
+/** The currently failing repo, if any (first alphabetically for stability). */
+export function activeCiAlert(state: ScoutState): (CiRepoState & { repo: string }) | null {
+  const red = Object.entries(state.ci ?? {})
+    .filter(([, s]) => s.conclusion === 'failure')
+    .sort(([a], [b]) => a.localeCompare(b))[0];
+  return red ? { repo: red[0], ...red[1] } : null;
+}
+
+export function planCiEvents(
+  observed: Array<{ repo: string; run: CiRun }>,
+  prev: ScoutState,
+  nowIso: string,
+): ScoutPlan {
+  const state: ScoutState = structuredClone(prev);
+  state.ci ??= {};
+  const events: BridgeEventInput[] = [];
+
+  for (const { repo, run } of observed) {
+    // Only settled verdicts count. In-progress, queued, cancelled and skipped
+    // runs change nothing; the last settled conclusion stands.
+    if (run.status !== 'completed') continue;
+    if (run.conclusion !== 'success' && run.conclusion !== 'failure') continue;
+
+    const before = state.ci[repo];
+    if (before && before.runId === run.id) continue;
+
+    const next: CiRepoState = {
+      runId: run.id,
+      conclusion: run.conclusion,
+      redSince: run.conclusion === 'failure' ? (before?.redSince ?? run.startedAt) : null,
+      workflow: run.workflow,
+      title: run.title,
+      url: run.url,
+    };
+    state.ci[repo] = next;
+
+    if (run.conclusion === 'failure' && before?.conclusion !== 'failure') {
+      events.push({
+        actor: 'scout',
+        kind: 'ci',
+        summary: `Red alert. CI failing on ${repoShort(repo)}: "${run.title}" (${hhmm(run.startedAt)}).`,
+        link: run.url,
+        detail: { repo, run },
+      });
+    } else if (run.conclusion === 'success' && before?.conclusion === 'failure') {
+      const downFor = before.redSince
+        ? ` after ${humanizeDurationMs(Date.parse(nowIso) - Date.parse(before.redSince))}`
+        : '';
+      events.push({
+        actor: 'scout',
+        kind: 'ci',
+        summary: `Condition green. CI recovered on ${repoShort(repo)}${downFor}.`,
+        link: run.url,
+        detail: { repo, run, redSince: before.redSince },
+      });
+    }
+    // red→red with a new run id: still down; the standing alert says enough.
   }
 
   return { events, state };

@@ -1,6 +1,6 @@
 import type { Client } from '@libsql/client';
 import type { LanguageModel } from 'ai';
-import { auditCopy, type AuditState } from './engine/audit';
+import { auditCopy, auditReadOnlyCopy, findingFingerprint, type AuditState } from './engine/audit';
 import type { BridgeEventInput } from './persistence/events';
 import { createProposal, keyIsBlocked } from './persistence/proposals';
 import { createMission, setMissionStatus, completeMission } from './persistence/missions';
@@ -23,22 +23,44 @@ export type AuditCycleResult = {
 export async function runAuditCycle(deps: {
   client: Client;
   entries: Record<string, string>;
+  /** Copy Critic can see but not edit (about fields, case-study sections).
+      Findings here are flagged once, publicly, and left to the maintainer. */
+  readOnly?: Record<string, string>;
   auditState: AuditState;
   /** Null when no gateway key: Critic still audits; Curator can't draft. */
   draftModel: LanguageModel | string | null;
   nowIso: string;
 }): Promise<AuditCycleResult> {
-  const { client, entries, auditState, draftModel, nowIso } = deps;
+  const { client, entries, readOnly = {}, auditState, draftModel, nowIso } = deps;
   const events: BridgeEventInput[] = [];
   const state: AuditState = { ...auditState, lastAuditAt: nowIso };
 
-  const findings = auditCopy(entries);
-  if (findings.length === 0) {
+  // The read-only sweep. Fingerprints keep a standing finding at one log
+  // entry for its lifetime; fixing the copy clears it, so a relapse refiles.
+  const readOnlyFindings = auditReadOnlyCopy(readOnly);
+  const fingerprints = readOnlyFindings.map(findingFingerprint);
+  const known = new Set(state.reported ?? []);
+  const fresh = readOnlyFindings.filter((f) => !known.has(findingFingerprint(f)));
+  state.reported = fingerprints;
+  if (fresh.length) {
+    const sources = new Set(fresh.map((f) => f.key.split('#')[0]));
     events.push({
       actor: 'critic',
       kind: 'audit',
-      summary: `Copy audit clean: ${Object.keys(entries).length} entries, 0 findings.`,
+      summary: `Site-wide sweep: ${fresh.length} new ${fresh.length === 1 ? 'finding' : 'findings'} in ${sources.size} ${sources.size === 1 ? 'source' : 'sources'}. Outside my write authority; flagged for Ruslan.`,
+      detail: { findings: fresh },
     });
+  }
+
+  const findings = auditCopy(entries);
+  if (findings.length === 0) {
+    if (readOnlyFindings.length === 0) {
+      events.push({
+        actor: 'critic',
+        kind: 'audit',
+        summary: `Copy audit clean: ${Object.keys(entries).length} curated entries and ${Object.keys(readOnly).length} site sources, 0 findings.`,
+      });
+    }
     return { state, events };
   }
 

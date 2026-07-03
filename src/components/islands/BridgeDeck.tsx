@@ -18,6 +18,8 @@ type Props = {
   events: BridgeEvent[];
   spend: BridgeFeedPayload['spend'];
   shipped: BridgeFeedPayload['shipped'];
+  /** Active CI failure Scout is tracking; null when every watched branch is green. */
+  alert: BridgeFeedPayload['alert'];
   live: boolean;
   replay: boolean;
   nowMs: number;
@@ -206,29 +208,40 @@ function Console({
   member,
   active,
   live,
+  alerted,
   spend,
   shipped,
 }: {
   member: Crew;
   active: boolean;
   live: boolean;
+  /** This station is reporting a real failure (Scout during a red alert). */
+  alerted: boolean;
   spend: Props['spend'];
   shipped: Props['shipped'];
 }) {
-  const accent = active
-    ? 'var(--color-accent)'
-    : member.online
-      ? 'var(--color-text)'
-      : 'var(--color-text-subtle)';
+  const accent = alerted
+    ? 'var(--color-danger)'
+    : active
+      ? 'var(--color-accent)'
+      : member.online
+        ? 'var(--color-text)'
+        : 'var(--color-text-subtle)';
   return (
     <div
       className="relative overflow-hidden rounded-md p-2.5 transition-[border-color,box-shadow] duration-200"
       style={{
-        background: active
-          ? 'color-mix(in srgb, var(--color-accent) 6%, var(--color-bg))'
-          : 'var(--color-bg)',
-        border: `1px solid ${active ? 'var(--color-accent-dim)' : 'var(--color-border)'}`,
-        boxShadow: active && live ? '0 0 18px -6px var(--color-accent)' : 'none',
+        background: alerted
+          ? 'color-mix(in srgb, var(--color-danger) 7%, var(--color-bg))'
+          : active
+            ? 'color-mix(in srgb, var(--color-accent) 6%, var(--color-bg))'
+            : 'var(--color-bg)',
+        border: `1px solid ${alerted ? 'var(--color-danger-dim)' : active ? 'var(--color-accent-dim)' : 'var(--color-border)'}`,
+        boxShadow: alerted
+          ? '0 0 18px -6px var(--color-danger)'
+          : active && live
+            ? '0 0 18px -6px var(--color-accent)'
+            : 'none',
       }}
     >
       {active && live && (
@@ -247,17 +260,23 @@ function Console({
         </span>
         <span
           aria-hidden="true"
-          className={active && live ? 'deck-led-live' : ''}
+          className={alerted ? 'deck-alert-pulse' : active && live ? 'deck-led-live' : ''}
           style={{
             width: 7,
             height: 7,
             borderRadius: 9999,
-            background: active
-              ? 'var(--color-accent)'
-              : member.online
-                ? 'var(--color-accent-dim)'
-                : 'var(--color-text-subtle)',
-            boxShadow: active ? '0 0 6px var(--color-accent)' : 'none',
+            background: alerted
+              ? 'var(--color-danger)'
+              : active
+                ? 'var(--color-accent)'
+                : member.online
+                  ? 'var(--color-accent-dim)'
+                  : 'var(--color-text-subtle)',
+            boxShadow: alerted
+              ? '0 0 6px var(--color-danger)'
+              : active
+                ? '0 0 6px var(--color-accent)'
+                : 'none',
           }}
         />
       </div>
@@ -283,7 +302,16 @@ function Console({
   );
 }
 
-export default function BridgeDeck({ crew, events, spend, shipped, live, replay, nowMs }: Props) {
+export default function BridgeDeck({
+  crew,
+  events,
+  spend,
+  shipped,
+  alert,
+  live,
+  replay,
+  nowMs,
+}: Props) {
   const reduced = useReducedMotion();
   const headline = events.at(-1);
   const activeActor = headline?.actor;
@@ -293,19 +321,24 @@ export default function BridgeDeck({ crew, events, spend, shipped, live, replay,
     crew.find((m) => m.id === activeActor) ?? (activeActor ? ACTOR_LABEL[activeActor] : undefined);
   const monogram = (actorMeta?.name ?? 'BR').slice(0, 2).toUpperCase();
 
-  const stateLabel = replay ? 'REPLAY' : live ? 'LIVE' : 'STANDBY';
+  // Replay outranks everything (you are scrubbing history); a real CI failure
+  // outranks liveness (the ship's condition matters more than its pulse).
+  const alerting = alert !== null && !replay;
+  const stateLabel = replay ? 'REPLAY' : alerting ? 'RED ALERT' : live ? 'LIVE' : 'STANDBY';
   const stateColor = replay
     ? 'var(--color-warning)'
-    : live
-      ? 'var(--color-accent)'
-      : 'var(--color-text-subtle)';
+    : alerting
+      ? 'var(--color-danger)'
+      : live
+        ? 'var(--color-accent)'
+        : 'var(--color-text-subtle)';
 
   return (
     <div
-      className="relative overflow-hidden rounded-lg p-4 md:p-5"
+      className="relative overflow-hidden rounded-lg p-4 md:p-5 transition-[border-color] duration-500"
       style={{
         background: 'var(--color-bg-elevated)',
-        border: '1px solid var(--color-border)',
+        border: `1px solid ${alerting ? 'var(--color-danger-dim)' : 'var(--color-border)'}`,
         backgroundImage:
           'linear-gradient(var(--color-border) 1px, transparent 1px), linear-gradient(90deg, var(--color-border) 1px, transparent 1px)',
         backgroundSize: '32px 32px',
@@ -313,6 +346,19 @@ export default function BridgeDeck({ crew, events, spend, shipped, live, replay,
       }}
       aria-label="Operations deck: live crew status"
     >
+      {/* Klaxon wash: a breathing red vignette hugging the deck edges while a
+          watched branch is red. Static (mid-opacity) under reduced motion. */}
+      {alerting && (
+        <div
+          aria-hidden="true"
+          className={`pointer-events-none absolute inset-0 ${reduced ? '' : 'deck-alert-pulse'}`}
+          style={{
+            opacity: reduced ? 0.6 : undefined,
+            background:
+              'radial-gradient(140% 110% at 50% 50%, transparent 55%, color-mix(in srgb, var(--color-danger) 16%, transparent) 100%)',
+          }}
+        />
+      )}
       {/* vignette so the grid fades at the edges */}
       <div
         aria-hidden="true"
@@ -390,6 +436,33 @@ export default function BridgeDeck({ crew, events, spend, shipped, live, replay,
                 )}
               </p>
             )}
+            {/* Standing alert strip: stays up for the whole outage, with the
+                receipt. The headline above keeps narrating normal traffic. */}
+            {alerting && alert && (
+              <p
+                className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-sm px-2.5 py-1.5 font-mono text-[11px]"
+                style={{
+                  border: '1px solid var(--color-danger-dim)',
+                  background: 'color-mix(in srgb, var(--color-danger) 8%, transparent)',
+                }}
+              >
+                <span style={{ color: 'var(--color-danger)' }}>
+                  ▲ CI failing on {alert.repo.split('/')[1] ?? alert.repo}
+                </span>
+                <span style={{ color: 'var(--color-text-muted)' }}>
+                  {alert.since ? `red for ${relTime(alert.since, nowMs).replace(' ago', '')}` : ''}
+                </span>
+                <a
+                  href={alert.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline-offset-4 hover:underline"
+                  style={{ color: 'var(--color-danger)' }}
+                >
+                  view failing run ↗
+                </a>
+              </p>
+            )}
           </div>
         </div>
 
@@ -401,6 +474,7 @@ export default function BridgeDeck({ crew, events, spend, shipped, live, replay,
               member={m}
               active={m.id === activeActor}
               live={live && !replay}
+              alerted={alerting && m.id === 'scout'}
               spend={spend}
               shipped={shipped}
             />
