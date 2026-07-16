@@ -15,6 +15,7 @@ import {
 type Position = {
   book?: string;
   symbol?: string;
+  is_real?: boolean;
   entry?: number | null;
   current?: number | null;
   pnl_pct?: number | null;
@@ -33,13 +34,19 @@ type Position = {
 type Closed = {
   book?: string;
   symbol?: string;
+  is_real?: boolean;
   return_pct?: number | null;
   pnl_usd?: number | null;
   exit_reason?: string | null;
   source?: string | null;
   closed_at?: string | null;
 };
-type EquityPoint = { t?: string; equity?: number | null; bench_pct?: number | null };
+type EquityPoint = {
+  t?: string;
+  equity?: number | null;
+  ret_pct?: number | null;
+  bench_pct?: number | null;
+};
 
 type Align = 'left' | 'right';
 type Meta = { align?: Align; className?: string };
@@ -55,15 +62,39 @@ const pnlTone = (n?: number | null) =>
 
 const verdict = (n?: number | null) => (n == null ? '⚪' : n > 0.05 ? '🟢' : n < -2 ? '🔴' : '🟡');
 
-const bookBadge = (b?: string) => {
-  const name = b ?? '';
-  if (name.includes('aggressive')) return 'bg-amber-500/10 text-amber-300 ring-amber-500/20';
+// Categorical sleeve colors. Real money gets an amber ring + bold — a channel
+// that survives colorblindness and any background (paired with the "REAL $" text
+// tag on the row, never color alone).
+const bookBadge = (b?: string, isReal?: boolean) => {
+  const name = (b ?? '').toLowerCase();
+  if (isReal || name.includes('robinhood'))
+    return 'bg-amber-400/15 text-amber-200 ring-amber-400/60 font-semibold';
+  if (name.includes('alpaca')) return 'bg-cyan-500/10 text-cyan-300 ring-cyan-500/20';
+  if (name.includes('systematic')) return 'bg-violet-500/10 text-violet-300 ring-violet-500/20';
+  if (name.includes('aggressive')) return 'bg-fuchsia-500/10 text-fuchsia-300 ring-fuchsia-500/20';
   if (name.includes('mild')) return 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/20';
   return 'bg-sky-500/10 text-sky-300 ring-sky-500/20';
 };
 
 const fmtUsd = (n?: number | null) =>
   n == null ? '—' : (n >= 0 ? '+$' : '−$') + Math.abs(n).toLocaleString();
+
+const fmtPrice = (n?: number | null) =>
+  n == null
+    ? '—'
+    : '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Unmissable per-row real-money tag: text + amber + ring, sits next to the ticker
+// so it's visible regardless of sort/scroll and independent of the book column.
+const RealTag = () => (
+  <span
+    className="rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide ring-1 ring-inset ring-amber-400/60 bg-amber-400/15 text-amber-200"
+    aria-label="real money position"
+    title="real money — live broker position"
+  >
+    REAL $
+  </span>
+);
 
 const alignClass = (a?: Align) => (a === 'right' ? 'text-right' : '');
 
@@ -209,9 +240,11 @@ function DataTable<T>({
   );
 }
 
-const bookCell = (b?: string) => (
+const bookCell = (b?: string, isReal?: boolean) => (
   <span
-    className={'inline-flex rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset ' + bookBadge(b)}
+    className={
+      'inline-flex rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset ' + bookBadge(b, isReal)
+    }
   >
     {(b ?? '—').replace(' stock', ' stk').replace(' crypto', ' crp')}
   </span>
@@ -230,6 +263,7 @@ const positionColumns: ColumnDef<Position, unknown>[] = [
           <span>
             {verdict(p.pnl_pct)} {p.symbol}
           </span>
+          {p.is_real && <RealTag />}
           {p.pyramid_eligible && (
             <span
               className="rounded px-1 py-0.5 text-[9px] font-medium ring-1 ring-inset ring-emerald-500/20 bg-emerald-500/10 text-emerald-300"
@@ -254,7 +288,19 @@ const positionColumns: ColumnDef<Position, unknown>[] = [
     id: 'book',
     accessorFn: (r) => r.book,
     header: 'Book',
-    cell: ({ row }) => bookCell(row.original.book),
+    cell: ({ row }) => bookCell(row.original.book, row.original.is_real),
+  },
+  {
+    accessorKey: 'entry',
+    header: 'Entry',
+    meta: { align: 'right', className: 'whitespace-nowrap font-mono tabular-nums text-text-subtle' },
+    cell: ({ row }) => fmtPrice(row.original.entry),
+  },
+  {
+    accessorKey: 'current',
+    header: 'Price',
+    meta: { align: 'right', className: 'whitespace-nowrap font-mono tabular-nums text-text-muted' },
+    cell: ({ row }) => fmtPrice(row.original.current),
   },
   {
     accessorKey: 'pnl_pct',
@@ -340,8 +386,11 @@ const closedColumns: ColumnDef<Closed, unknown>[] = [
     header: 'Name',
     meta: { className: 'whitespace-nowrap text-text font-medium' },
     cell: ({ row }) => (
-      <span>
-        {verdict(row.original.return_pct)} {row.original.symbol}
+      <span className="inline-flex items-center gap-1.5">
+        <span>
+          {verdict(row.original.return_pct)} {row.original.symbol}
+        </span>
+        {row.original.is_real && <RealTag />}
       </span>
     ),
   },
@@ -349,7 +398,7 @@ const closedColumns: ColumnDef<Closed, unknown>[] = [
     id: 'book',
     accessorFn: (r) => r.book,
     header: 'Book',
-    cell: ({ row }) => bookCell(row.original.book),
+    cell: ({ row }) => bookCell(row.original.book, row.original.is_real),
   },
   {
     accessorKey: 'return_pct',
@@ -393,9 +442,14 @@ const closedColumns: ColumnDef<Closed, unknown>[] = [
 ];
 
 // ── Equity sparkline (pure SVG, no charting dependency) ──────────────────────
+// Two series on one dollar scale: the book's equity (green/red = up/down) and a
+// muted-blue benchmark grown from the same starting dollar (firstEquity ×
+// (1+bench%)). Benchmark is blue-not-red so P&L color stays unambiguous.
+const BENCH_COLOR = '#6ea8fe';
 function EquityChart({ label, points }: { label: string; points: EquityPoint[] }) {
-  const vals = points.map((p) => p.equity).filter((v): v is number => v != null);
-  if (vals.length < 2) {
+  // Keep only points with a real equity value, but carry bench_pct/ret_pct along.
+  const rows = points.filter((p): p is EquityPoint & { equity: number } => p.equity != null);
+  if (rows.length < 2) {
     return (
       <div className="rounded-xl border border-border bg-bg-elevated/40 p-4">
         <div className="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
@@ -408,29 +462,60 @@ function EquityChart({ label, points }: { label: string; points: EquityPoint[] }
   const W = 260,
     H = 64,
     pad = 4;
-  const min = Math.min(...vals),
-    max = Math.max(...vals);
-  const span = max - min || 1;
-  const step = (W - pad * 2) / (vals.length - 1);
-  const y = (v: number) => H - pad - ((v - min) / span) * (H - pad * 2);
-  const d = vals
-    .map((v, i) => `${i === 0 ? 'M' : 'L'} ${(pad + i * step).toFixed(1)} ${y(v).toFixed(1)}`)
-    .join(' ');
-  const last = vals[vals.length - 1],
-    first = vals[0];
+  const vals = rows.map((r) => r.equity);
+  const first = vals[0];
+  const last = vals[vals.length - 1];
   const up = last >= first;
+
+  // Benchmark grown from the same starting dollar. Only where bench_pct exists.
+  const benchEq = rows.map((r) =>
+    typeof r.bench_pct === 'number' ? first * (1 + r.bench_pct / 100) : null,
+  );
+  const benchCount = benchEq.filter((v) => v != null).length;
+  const hasBench = benchCount >= 2;
+
+  const scaleVals = hasBench
+    ? vals.concat(benchEq.filter((v): v is number => v != null))
+    : vals;
+  const min = Math.min(...scaleVals),
+    max = Math.max(...scaleVals);
+  const span = max - min || 1;
+  const step = (W - pad * 2) / (rows.length - 1);
+  const x = (i: number) => pad + i * step;
+  const y = (v: number) => H - pad - ((v - min) / span) * (H - pad * 2);
+
+  const d = vals.map((v, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(
+    ' ',
+  );
+  // Benchmark path may have leading/trailing gaps; start a fresh sub-path after
+  // any null so we never draw a line through missing data.
+  let benchD = '';
+  let penDown = false;
+  benchEq.forEach((v, i) => {
+    if (v == null) {
+      penDown = false;
+      return;
+    }
+    benchD += `${penDown ? 'L' : 'M'} ${x(i).toFixed(1)} ${y(v).toFixed(1)} `;
+    penDown = true;
+  });
+
   const color = up ? '#7af2a0' : '#fb7185';
   const chgPct = first ? ((last - first) / first) * 100 : 0;
+  // Gap vs benchmark in points: book cumulative return minus benchmark return.
+  const lastRow = rows[rows.length - 1];
+  const bookRet = typeof lastRow.ret_pct === 'number' ? lastRow.ret_pct : chgPct;
+  const benchRet = typeof lastRow.bench_pct === 'number' ? lastRow.bench_pct : null;
+  const gapPts = benchRet != null ? bookRet - benchRet : null;
+
   return (
     <div className="rounded-xl border border-border bg-bg-elevated/40 p-4">
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline justify-between gap-2">
         <div className="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
           {label}
         </div>
         <div
-          className={
-            'font-mono text-xs tabular-nums ' + (up ? 'text-emerald-300' : 'text-rose-300')
-          }
+          className={'font-mono text-xs tabular-nums ' + (up ? 'text-emerald-300' : 'text-rose-300')}
         >
           {up ? '+' : ''}
           {chgPct.toFixed(1)}%
@@ -440,8 +525,26 @@ function EquityChart({ label, points }: { label: string; points: EquityPoint[] }
         viewBox={`0 0 ${W} ${H}`}
         className="mt-2 w-full"
         preserveAspectRatio="none"
-        aria-label={`${label} equity curve`}
+        role="img"
+        aria-label={
+          `${label}: ${up ? 'up' : 'down'} ${Math.abs(chgPct).toFixed(1)} percent` +
+          (gapPts != null
+            ? `, ${gapPts >= 0 ? 'ahead of' : 'behind'} benchmark by ${Math.abs(gapPts).toFixed(1)} points`
+            : '')
+        }
       >
+        {hasBench && (
+          <path
+            d={benchD.trim()}
+            fill="none"
+            stroke={BENCH_COLOR}
+            strokeWidth="1.25"
+            strokeOpacity="0.7"
+            strokeDasharray="3 3"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        )}
         <path
           d={d}
           fill="none"
@@ -451,9 +554,37 @@ function EquityChart({ label, points }: { label: string; points: EquityPoint[] }
           strokeLinecap="round"
         />
       </svg>
-      <div className="mt-1 flex justify-between font-mono text-[10px] text-text-subtle tabular-nums">
-        <span>${first.toLocaleString()}</span>
-        <span>${last.toLocaleString()}</span>
+      <div className="mt-1.5 flex items-center justify-between gap-2 font-mono text-[10px] tabular-nums">
+        {hasBench ? (
+          <span className="inline-flex items-center gap-2 text-text-subtle">
+            <span className="inline-flex items-center gap-1">
+              <span
+                className="inline-block h-0.5 w-3 align-middle"
+                style={{ backgroundColor: color }}
+                aria-hidden="true"
+              />
+              book
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span
+                className="inline-block h-0 w-3 border-t border-dashed align-middle"
+                style={{ borderColor: BENCH_COLOR }}
+                aria-hidden="true"
+              />
+              bench
+            </span>
+          </span>
+        ) : (
+          <span className="text-text-subtle">${first.toLocaleString()}</span>
+        )}
+        {gapPts != null ? (
+          <span className={gapPts >= 0 ? 'text-emerald-300' : 'text-rose-300'}>
+            {gapPts >= 0 ? '+' : '−'}
+            {Math.abs(gapPts).toFixed(1)} pts vs bench
+          </span>
+        ) : (
+          <span className="text-text-subtle">${last.toLocaleString()}</span>
+        )}
       </div>
     </div>
   );
@@ -490,7 +621,22 @@ const CURVE_LABELS: Record<string, string> = {
   mild_crypto: 'Mild crp',
   aggressive_stock: 'Aggressive stk',
   aggressive_crypto: 'Aggressive crp',
+  systematic: 'Systematic (no-AI)',
+  alpaca: 'Alpaca (broker)',
 };
+
+// Sleeves first, then the control + live rails, so the grid reads in the same
+// order as the book cards above. Unknown keys sort last, in publish order.
+const CURVE_ORDER = [
+  'stock',
+  'crypto',
+  'mild_stock',
+  'mild_crypto',
+  'aggressive_stock',
+  'aggressive_crypto',
+  'systematic',
+  'alpaca',
+];
 
 export default function TraderTables({
   positions = [],
@@ -501,11 +647,17 @@ export default function TraderTables({
   closed?: Closed[];
   equityCurve?: Record<string, EquityPoint[]>;
 }) {
-  const curves = Object.entries(equityCurve).filter(([, pts]) => (pts?.length ?? 0) > 0);
+  const curves = Object.entries(equityCurve)
+    .filter(([, pts]) => (pts?.length ?? 0) > 0)
+    .sort(([a], [b]) => {
+      const ia = CURVE_ORDER.indexOf(a),
+        ib = CURVE_ORDER.indexOf(b);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    });
   return (
     <>
       {curves.length > 0 && (
-        <Section title="Equity curves">
+        <Section title="Equity curves · vs benchmark">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {curves.map(([key, pts]) => (
               <EquityChart key={key} label={CURVE_LABELS[key] ?? key} points={pts} />

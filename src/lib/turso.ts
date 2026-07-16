@@ -135,9 +135,16 @@ export async function readSnapshot(): Promise<Snapshot | null> {
 // the payload and degrades section-by-section, so the dashboard must never
 // assume a field exists. Add/remove data on the publisher side without touching
 // this type and the page still renders.
+// schema_version 3: books carry a `kind` and `is_real` flag, and the live rails
+// (Robinhood/Alpaca) publish an alternate shape — deployed/realized_usd instead
+// of the paper sleeve's deployed_pct/cash/heat/max_dd. Every field stays optional
+// so either shape (or a partial one) renders without a guard blowing up.
+export type BookKind = 'paper' | 'control' | 'real' | 'broker-paper';
 export type TraderBook = {
   name?: string;
   mode?: string;
+  kind?: BookKind;
+  is_real?: boolean;
   equity?: number;
   start?: number;
   cash?: number | null;
@@ -153,10 +160,24 @@ export type TraderBook = {
   heat_cap?: number | null;
   stop_exits?: number | null;
   time_exits?: number | null;
+  // Live-rail (kind "real" | "broker-paper") alternate fields:
+  deployed?: number | null; // dollars at work (cost), not a percent
+  realized_usd?: number | null;
+  // Real broker/account truth, marked to live prices:
+  account_value?: number | null; // true account total (holdings + idle cash)
+  account_cash?: number | null;
+  account_pnl_pct?: number | null; // whole-account return vs start
+  account_source?: 'broker_api' | 'session' | null; // where the true value came from
+  current_value?: number | null; // marked value of open holdings
+  unrealized_usd?: number | null;
+  deployed_pnl_pct?: number | null; // return on capital put to work
+  pnl_basis?: 'account' | 'deployed' | null; // what pnl_pct measures
+  marked?: boolean; // every holding got a live mark (else some fell back to cost)
 };
 export type TraderPosition = {
   book?: string;
   symbol?: string;
+  is_real?: boolean;
   entry?: number | null;
   current?: number | null;
   pnl_pct?: number | null;
@@ -190,11 +211,21 @@ export type TraderMacroEvent = {
 export type TraderClosed = {
   book?: string;
   symbol?: string;
+  is_real?: boolean;
   return_pct?: number | null;
   pnl_usd?: number | null;
   exit_reason?: string | null;
   source?: string | null;
   closed_at?: string | null;
+};
+// The headline experiment: the AI's $50k stock book vs a deterministic no-AI
+// book that buys the same universe on the same rules. Positive edge = AI adds
+// value over the code. verdict is one of "AI ahead" | "code ahead" | "dead heat".
+export type DecisionTest = {
+  ai_ret_pct?: number | null;
+  systematic_ret_pct?: number | null;
+  edge_pts?: number | null;
+  verdict?: string;
 };
 export type EquityPoint = {
   t?: string;
@@ -210,6 +241,7 @@ export type TraderSnapshot = {
   positions?: TraderPosition[];
   closed?: TraderClosed[];
   equity_curve?: Record<string, EquityPoint[]>;
+  decision_test?: DecisionTest;
   learning?: Record<string, unknown>;
   reflections?: Array<{
     symbol?: string;
@@ -224,15 +256,47 @@ export type TraderSnapshot = {
   monitor?: Record<string, unknown>;
 };
 
-export async function readTraderSnapshot(): Promise<TraderSnapshot | null> {
-  if (!client) return null;
+// The dashboard must tell three failure modes apart: a genuinely-empty table
+// ("publisher hasn't run yet") reads very differently from a DB/parse error
+// ("something is broken") — and both differ from the app running without creds.
+// A discriminated result keeps that distinction instead of collapsing to null.
+export type TraderSnapshotResult =
+  | { status: 'ok'; snap: TraderSnapshot }
+  | { status: 'empty' }
+  | { status: 'error' }
+  | { status: 'unconfigured' };
+
+const asArray = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+const asRecord = (v: unknown): Record<string, unknown> =>
+  v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+
+// The JSON blob is untrusted (a separate process writes it). Coerce the shapes
+// the page iterates over so a malformed/partial payload degrades a section
+// rather than throwing during SSR. Per-field guards in the page still apply.
+function normalizeTraderSnapshot(raw: unknown): TraderSnapshot {
+  const p = asRecord(raw) as Partial<TraderSnapshot>;
+  return {
+    ...p,
+    books: asArray<TraderBook>(p.books),
+    positions: asArray<TraderPosition>(p.positions),
+    closed: asArray<TraderClosed>(p.closed),
+    equity_curve:
+      p.equity_curve && typeof p.equity_curve === 'object' ? p.equity_curve : {},
+    reflections: asArray(p.reflections),
+    macro_events: asArray<TraderMacroEvent>(p.macro_events),
+    degraded: asArray<string>(p.degraded),
+  };
+}
+
+export async function readTraderSnapshot(): Promise<TraderSnapshotResult> {
+  if (!client) return { status: 'unconfigured' };
   try {
     const rs = await client.execute('SELECT data FROM trader_snapshot WHERE id = 1');
     const row = rs.rows[0];
-    if (!row || row.data == null) return null;
-    return JSON.parse(String(row.data)) as TraderSnapshot;
+    if (!row || row.data == null) return { status: 'empty' };
+    return { status: 'ok', snap: normalizeTraderSnapshot(JSON.parse(String(row.data))) };
   } catch (err) {
     console.error('[turso] readTraderSnapshot failed:', err);
-    return null;
+    return { status: 'error' };
   }
 }

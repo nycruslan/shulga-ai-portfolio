@@ -2,11 +2,17 @@
 export const prerender = false;
 import AdminShell from '../../layouts/AdminShell.astro';
 import TraderTables from '../../components/admin/TraderTables.tsx';
-import { readTraderSnapshot, type TraderCarry, type TraderMacroEvent } from '../../lib/turso';
+import {
+  readTraderSnapshot,
+  type TraderBook,
+  type TraderCarry,
+  type TraderMacroEvent,
+} from '../../lib/turso';
 import { relativeTime } from '../../lib/relative-time';
 
 // Middleware guarantees only the owner reaches /admin/*.
-const snap = await readTraderSnapshot();
+const result = await readTraderSnapshot();
+const snap = result.status === 'ok' ? result.snap : null;
 
 // The publisher's learning/regime/monitor blobs are loosely-typed JSON; type the
 // fields this page actually reads so they render without an `any` escape hatch.
@@ -39,6 +45,12 @@ const carry = (snap?.carry ?? {}) as TraderCarry;
 const macroEvents = (snap?.macro_events ?? []) as TraderMacroEvent[];
 const reflections = snap?.reflections ?? [];
 const degraded = snap?.degraded ?? [];
+const decision = snap?.decision_test;
+
+// Group the 9 books: paper sleeves together, then the control + live rails set
+// apart (real money must never blend in with a paper sleeve).
+const paperBooks = books.filter((b) => (b.kind ?? 'paper') === 'paper');
+const capitalBooks = books.filter((b) => b.kind === 'control' || b.kind === 'real' || b.kind === 'broker-paper');
 
 const updatedDate = snap?.generated_at ? new Date(snap.generated_at) : null;
 // Relative time is timezone-safe; toLocaleString() would render in the server's
@@ -51,6 +63,8 @@ const pct = (v: unknown) => (typeof v === 'number' ? `${v > 0 ? '+' : ''}${v.toF
 const tone = (v: unknown) =>
   typeof v !== 'number' ? '' : v > 0.05 ? 'text-emerald-300' : v < -0.05 ? 'text-rose-300' : '';
 const money = (v: unknown) => (typeof v === 'number' ? `$${Math.round(v).toLocaleString()}` : '—');
+const signedMoney = (v: unknown) =>
+  typeof v === 'number' ? `${v >= 0 ? '+$' : '−$'}${Math.abs(v).toLocaleString()}` : '—';
 const clamp = (v: number) => Math.max(0, Math.min(100, v));
 const heatBar = (h: number, cap: number) => {
   const r = cap ? h / cap : 0;
@@ -67,6 +81,48 @@ const carryTone = (f?: string) =>
 const tradesPct = clamp(
   ((learning.go_live_trades ?? 0) / (learning.go_live_trades_needed ?? 40)) * 100,
 );
+
+// Real vs paper is a safety signal, so it travels on multiple channels: a text
+// pill + a distinct card treatment (never color alone). aria-label spells it out.
+const isLiveBook = (b: TraderBook) => b.kind === 'real' || b.kind === 'broker-paper';
+type Badge = { label: string; pill: string; card: string; aria: string };
+const bookBadge = (b: TraderBook): Badge => {
+  if (b.kind === 'real' || b.is_real)
+    return {
+      label: 'REAL MONEY',
+      pill: 'border border-amber-400/70 bg-amber-400/15 text-amber-200 font-semibold tracking-wide',
+      card: 'border-amber-400/60 bg-amber-500/[0.07] ring-1 ring-amber-400/40',
+      aria: 'real money book',
+    };
+  if (b.kind === 'broker-paper')
+    return {
+      label: 'broker paper',
+      pill: 'border border-sky-400/40 bg-sky-500/10 text-sky-200',
+      card: 'border-border bg-bg-elevated/40',
+      aria: 'broker paper book (not real money)',
+    };
+  if (b.kind === 'control')
+    return {
+      label: 'no-AI control',
+      pill: 'border border-violet-400/40 bg-violet-500/10 text-violet-200',
+      card: 'border-border bg-bg-elevated/40',
+      aria: 'deterministic no-AI control book',
+    };
+  return {
+    label: 'paper',
+    pill: 'border border-border-strong bg-white/[0.04] text-text-subtle',
+    card: 'border-border bg-bg-elevated/40',
+    aria: 'paper (simulated) book',
+  };
+};
+
+// Decision-test scoreboard tone: green when the AI is ahead of the code.
+const verdictTone = (v?: string) =>
+  v === 'AI ahead'
+    ? 'text-emerald-300'
+    : v === 'code ahead'
+      ? 'text-rose-300'
+      : 'text-text-muted';
 ---
 
 <AdminShell title="AI Trader">
@@ -75,6 +131,7 @@ const tradesPct = clamp(
       <span
         slot="meta"
         class={'hidden text-xs sm:inline ' + (stale ? 'text-amber-300' : 'text-text-subtle')}
+        title={updatedDate ? updatedDate.toISOString() : undefined}
       >
         {stale ? '⚠ stale · ' : ''}updated {updated}
       </span>
@@ -83,12 +140,41 @@ const tradesPct = clamp(
 
   {
     !snap ? (
-      <p class="mt-8 text-sm text-text-muted">
-        No snapshot yet. The trading Mac publishes via
-        <code class="font-mono text-text-subtle">publish_trader.py</code> (Turso creds required).
-      </p>
+      result.status === 'error' ? (
+        <div class="mt-8 rounded-xl border border-rose-500/30 bg-rose-500/[0.06] px-4 py-3.5 text-sm text-rose-200">
+          <p class="font-medium">Couldn’t load the snapshot.</p>
+          <p class="mt-1 text-rose-200/80">
+            The database read or JSON parse failed — this is an error, not an empty feed. Check the
+            Turso connection and the publisher’s last write.
+          </p>
+        </div>
+      ) : result.status === 'unconfigured' ? (
+        <p class="mt-8 text-sm text-text-muted">
+          Turso isn’t configured in this environment (no{' '}
+          <code class="font-mono text-text-subtle">TURSO_*</code> creds), so there’s nothing to read.
+        </p>
+      ) : (
+        <div class="mt-8 rounded-xl border border-border bg-bg-elevated/40 px-4 py-3.5 text-sm text-text-muted">
+          <p class="font-medium text-text">No snapshot published yet.</p>
+          <p class="mt-1">
+            The trading Mac publishes via{' '}
+            <code class="font-mono text-text-subtle">publish_trader.py</code> every 15 minutes. The
+            row is empty, so nothing has run yet.
+          </p>
+        </div>
+      )
     ) : (
       <>
+        {stale && (
+          <div class="mb-3 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-2 text-xs text-amber-200">
+            <span aria-hidden="true">⚠</span>
+            <span>
+              Data is stale — last published {updated}. The publisher runs every 15 min, so this
+              feed may be behind.
+            </span>
+          </div>
+        )}
+
         {degraded.length > 0 && (
           <div class="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-2.5 text-xs text-amber-200">
             ⚠ {degraded.length} section(s) degraded this snapshot:{' '}
@@ -97,7 +183,7 @@ const tradesPct = clamp(
         )}
 
         {/* Risk ribbon: regime · carry · monitor */}
-        <section class="flex flex-wrap items-center gap-2 text-xs">
+        <section class="flex flex-wrap items-center gap-2 text-xs" aria-label="Risk status">
           {regime.label && (
             <span class="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg-elevated/40 px-3 py-1 text-text-muted">
               regime <b class="text-text">{regime.label}</b>
@@ -144,6 +230,74 @@ const tradesPct = clamp(
           </span>
         </section>
 
+        {/* Decision-test hero: the headline AI-vs-code experiment. */}
+        {decision &&
+          (typeof decision.ai_ret_pct === 'number' ||
+            typeof decision.systematic_ret_pct === 'number') && (
+            <section
+              class="mt-4 rounded-2xl border border-border-strong bg-bg-elevated/60 p-5"
+              aria-label="Decision test: AI versus deterministic control"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h2 class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+                  Decision test · AI vs no-AI control
+                </h2>
+                {decision.verdict && (
+                  <span
+                    class={
+                      'rounded-full border border-current/30 px-2.5 py-0.5 font-mono text-[11px] font-semibold ' +
+                      verdictTone(decision.verdict)
+                    }
+                  >
+                    {decision.verdict}
+                  </span>
+                )}
+              </div>
+
+              <div class="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3">
+                <div>
+                  <div class="font-mono text-[10px] uppercase tracking-wider text-text-subtle">
+                    AI core
+                  </div>
+                  <div class={'mt-0.5 text-2xl font-medium tabular-nums ' + tone(decision.ai_ret_pct)}>
+                    {pct(decision.ai_ret_pct)}
+                  </div>
+                </div>
+                <div>
+                  <div class="font-mono text-[10px] uppercase tracking-wider text-text-subtle">
+                    Systematic (no-AI)
+                  </div>
+                  <div
+                    class={
+                      'mt-0.5 text-2xl font-medium tabular-nums ' + tone(decision.systematic_ret_pct)
+                    }
+                  >
+                    {pct(decision.systematic_ret_pct)}
+                  </div>
+                </div>
+                <div class="col-span-2 sm:col-span-1">
+                  <div class="font-mono text-[10px] uppercase tracking-wider text-text-subtle">
+                    AI edge
+                  </div>
+                  <div
+                    class={
+                      'mt-0.5 text-2xl font-semibold tabular-nums ' + verdictTone(decision.verdict)
+                    }
+                  >
+                    {typeof decision.edge_pts === 'number'
+                      ? `${decision.edge_pts > 0 ? '+' : ''}${decision.edge_pts.toFixed(2)} pts`
+                      : '—'}
+                  </div>
+                </div>
+              </div>
+
+              <p class="mt-3 text-xs leading-relaxed text-text-muted">
+                Same $50k, same universe, same exits — only the AI’s picks differ. A positive edge
+                means the AI is adding value over a deterministic book that just buys everything.
+              </p>
+            </section>
+          )}
+
         {/* Upcoming macro events (binary risk) */}
         {macroEvents.length > 0 && (
           <section class="mt-3 flex flex-wrap items-center gap-2">
@@ -166,70 +320,191 @@ const tradesPct = clamp(
           </section>
         )}
 
-        {/* Book risk-console cards */}
-        <section class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {books.map((b) => (
-            <div class="rounded-xl border border-border bg-bg-elevated/40 p-4">
-              <div class="flex items-center justify-between">
-                <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-                  {b.name}
-                </div>
-                {typeof b.win_rate === 'number' && (
-                  <span class="font-mono text-[10px] text-text-subtle tabular-nums">
-                    {b.win_rate}% win
-                  </span>
-                )}
-              </div>
-              <div class="mt-1 text-2xl font-medium tabular-nums">{money(b.equity)}</div>
-              <div class="mt-1 flex items-baseline gap-2 text-xs">
-                <span class={'font-mono tabular-nums ' + tone(b.pnl_pct)}>{pct(b.pnl_pct)}</span>
-                {typeof b.alpha_pct === 'number' && (
-                  <span class="text-text-subtle">α {pct(b.alpha_pct)}</span>
-                )}
-                <span class="ml-auto font-mono text-[11px] text-text-subtle tabular-nums">
-                  {b.open_n ?? 0} open · {b.closed_n ?? 0} closed
-                </span>
-              </div>
-
-              {typeof b.deployed_pct === 'number' && (
-                <div class="mt-3">
-                  <div class="flex items-center justify-between font-mono text-[10px] text-text-subtle">
-                    <span>{b.deployed_pct}% deployed</span>
-                    <span>{money(b.cash)} cash</span>
-                  </div>
-                  <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
-                    <div
-                      class="h-full rounded-full bg-sky-400/70"
-                      style={`width:${clamp(b.deployed_pct)}%`}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {(typeof b.heat_pct === 'number' || typeof b.max_dd === 'number') && (
-                <div class="mt-2 flex items-center gap-2 font-mono text-[10px] text-text-subtle">
-                  {typeof b.heat_pct === 'number' && typeof b.heat_cap === 'number' && (
-                    <>
-                      <span class="shrink-0">heat</span>
-                      <div class="h-1 w-14 overflow-hidden rounded-full bg-white/[0.06]">
-                        <div
-                          class={'h-full rounded-full ' + heatBar(b.heat_pct, b.heat_cap)}
-                          style={`width:${clamp((b.heat_pct / (b.heat_cap || 1)) * 100)}%`}
-                        />
+        {/* Paper sleeves */}
+        {paperBooks.length > 0 && (
+          <>
+            <h2 class="mb-2.5 mt-5 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+              Paper sleeves · {paperBooks.length}
+            </h2>
+            <section class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {paperBooks.map((b) => {
+                const badge = bookBadge(b);
+                return (
+                  <div class={'rounded-xl border p-4 ' + badge.card}>
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+                        {b.name}
                       </div>
-                      <span class="shrink-0 tabular-nums">
-                        {b.heat_pct}/{b.heat_cap}%
+                      <span
+                        class={'shrink-0 rounded-full px-2 py-0.5 text-[9px] uppercase ' + badge.pill}
+                        aria-label={badge.aria}
+                      >
+                        {badge.label}
                       </span>
-                    </>
-                  )}
-                  {typeof b.max_dd === 'number' && (
-                    <span class="ml-auto shrink-0 tabular-nums">maxDD {b.max_dd}%</span>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-        </section>
+                    </div>
+                    <div class="mt-1 text-2xl font-medium tabular-nums">{money(b.equity)}</div>
+                    <div class="mt-1 flex items-baseline gap-2 text-xs">
+                      <span class={'font-mono tabular-nums ' + tone(b.pnl_pct)}>
+                        {pct(b.pnl_pct)}
+                      </span>
+                      {typeof b.alpha_pct === 'number' && (
+                        <span class="text-text-subtle">α {pct(b.alpha_pct)}</span>
+                      )}
+                      <span class="ml-auto font-mono text-[11px] text-text-subtle tabular-nums">
+                        {b.open_n ?? 0} open · {b.closed_n ?? 0} closed
+                      </span>
+                    </div>
+
+                    {typeof b.deployed_pct === 'number' && (
+                      <div class="mt-3">
+                        <div class="flex items-center justify-between font-mono text-[10px] text-text-subtle">
+                          <span>{b.deployed_pct}% deployed</span>
+                          <span>{money(b.cash)} cash</span>
+                        </div>
+                        <div
+                          class="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]"
+                          role="progressbar"
+                          aria-label="capital deployed"
+                          aria-valuenow={Math.round(clamp(b.deployed_pct))}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                        >
+                          <div
+                            class="h-full rounded-full bg-sky-400/70"
+                            style={`width:${clamp(b.deployed_pct)}%`}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-text-subtle">
+                      {typeof b.heat_pct === 'number' && typeof b.heat_cap === 'number' && (
+                        <span class="inline-flex items-center gap-1.5">
+                          <span class="shrink-0">heat</span>
+                          <span
+                            class="inline-block h-1 w-14 overflow-hidden rounded-full bg-white/[0.06] align-middle"
+                            role="progressbar"
+                            aria-label="risk heat vs cap"
+                            aria-valuenow={Math.round(b.heat_pct)}
+                            aria-valuemin={0}
+                            aria-valuemax={Math.round(b.heat_cap)}
+                          >
+                            <span
+                              class={'block h-full rounded-full ' + heatBar(b.heat_pct, b.heat_cap)}
+                              style={`width:${clamp((b.heat_pct / (b.heat_cap || 1)) * 100)}%`}
+                            />
+                          </span>
+                          <span class="shrink-0 tabular-nums">
+                            {b.heat_pct}/{b.heat_cap}%
+                          </span>
+                        </span>
+                      )}
+                      {typeof b.reward_risk === 'number' && b.reward_risk > 0 && (
+                        <span class="tabular-nums">R/R {b.reward_risk.toFixed(2)}</span>
+                      )}
+                      {typeof b.win_rate === 'number' && (
+                        <span class="tabular-nums">{b.win_rate}% win</span>
+                      )}
+                      {typeof b.max_dd === 'number' && (
+                        <span class="ml-auto tabular-nums">maxDD {b.max_dd}%</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+          </>
+        )}
+
+        {/* Control + live rails — set apart from the paper sleeves. */}
+        {capitalBooks.length > 0 && (
+          <>
+            <h2 class="mb-2.5 mt-6 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+              Control &amp; live capital · {capitalBooks.length}
+            </h2>
+            <section class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {capitalBooks.map((b) => {
+                const badge = bookBadge(b);
+                const live = isLiveBook(b);
+                return (
+                  <div class={'rounded-xl border p-4 ' + badge.card}>
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+                        {b.name}
+                      </div>
+                      <span
+                        class={'shrink-0 rounded-full px-2 py-0.5 text-[9px] uppercase ' + badge.pill}
+                        aria-label={badge.aria}
+                      >
+                        {badge.label}
+                      </span>
+                    </div>
+                    <div class="mt-1 text-2xl font-medium tabular-nums">{money(b.equity)}</div>
+
+                    {live ? (
+                      <>
+                        <div class="mt-1 flex items-baseline gap-2 text-xs">
+                          <span class={'font-mono tabular-nums ' + tone(b.pnl_pct)}>
+                            {pct(b.pnl_pct)}
+                          </span>
+                          <span class="font-mono text-[10px] text-text-subtle">
+                            {b.pnl_basis === 'deployed' ? 'on deployed' : 'account'}
+                          </span>
+                          <span class="ml-auto font-mono text-[11px] text-text-subtle tabular-nums">
+                            {b.open_n ?? 0} open · {b.closed_n ?? 0} closed
+                          </span>
+                        </div>
+                        <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-text-subtle">
+                          {typeof b.current_value === 'number' && (
+                            <span class="tabular-nums">{money(b.current_value)} holdings</span>
+                          )}
+                          {typeof b.account_cash === 'number' && (
+                            <span class="tabular-nums">{money(b.account_cash)} cash</span>
+                          )}
+                          {typeof b.realized_usd === 'number' && (
+                            <span class={'tabular-nums ' + tone(b.realized_usd)}>
+                              {signedMoney(b.realized_usd)} realized
+                            </span>
+                          )}
+                          {typeof b.win_rate === 'number' && (
+                            <span class="ml-auto tabular-nums">{b.win_rate}% win</span>
+                          )}
+                        </div>
+                        <div class="mt-1.5 flex flex-wrap items-center gap-x-3 font-mono text-[10px] text-text-subtle">
+                          {typeof b.deployed === 'number' && (
+                            <span class="tabular-nums">{money(b.deployed)} deployed</span>
+                          )}
+                          {typeof b.start === 'number' && (
+                            <span class="tabular-nums">{money(b.start)} funded</span>
+                          )}
+                          {b.account_source && (
+                            <span class="ml-auto">
+                              {b.account_source === 'broker_api' ? 'live broker feed' : 'session-recorded'}
+                            </span>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div class="mt-1 flex items-baseline gap-2 text-xs">
+                          <span class={'font-mono tabular-nums ' + tone(b.pnl_pct)}>
+                            {pct(b.pnl_pct)}
+                          </span>
+                          <span class="ml-auto font-mono text-[11px] text-text-subtle tabular-nums">
+                            {b.open_n ?? 0} open · {b.closed_n ?? 0} closed
+                          </span>
+                        </div>
+                        <p class="mt-2 font-mono text-[10px] leading-relaxed text-text-subtle">
+                          Deterministic benchmark: buys the same universe on the same rules, no AI.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </section>
+          </>
+        )}
 
         {/* Learning / go-live gate */}
         {Object.keys(learning).length > 0 && (
@@ -259,7 +534,14 @@ const tradesPct = clamp(
                 </span>
                 <span class="text-text-subtle">{Math.round(tradesPct)}%</span>
               </div>
-              <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+              <div
+                class="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]"
+                role="progressbar"
+                aria-label="closed trades toward go-live gate"
+                aria-valuenow={Math.round(tradesPct)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
                 <div class="h-full rounded-full bg-sky-400/70" style={`width:${tradesPct}%`} />
               </div>
             </div>

@@ -8,11 +8,14 @@ import { relativeTime } from '../../lib/relative-time';
 
 // The owner hub: every admin feature as a card with a live stat, so a glance
 // tells you what needs attention. Middleware guarantees only the owner is here.
-const [job, trade, pending] = await Promise.all([
+const [job, traderResult, pending] = await Promise.all([
   readSnapshot().catch(() => null),
   readTraderSnapshot().catch(() => null),
   turso ? listProposals(turso, 'pending').catch(() => []) : Promise.resolve([]),
 ]);
+// readTraderSnapshot now returns a discriminated result; the hub only needs the
+// snapshot when it's actually there.
+const trade = traderResult?.status === 'ok' ? traderResult.snap : null;
 
 const tradeUpdated = trade?.generated_at ? new Date(trade.generated_at) : null;
 const tradeStaleMin = tradeUpdated ? (Date.now() - tradeUpdated.getTime()) / 60000 : null;
