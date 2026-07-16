@@ -1,5 +1,5 @@
 import { defineMiddleware } from 'astro:middleware';
-import { auth, OWNER } from './lib/auth';
+import { auth, isAllowed } from './lib/auth';
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const path = context.url.pathname;
@@ -17,9 +17,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
 
   if (path !== '/admin/login') {
-    const email = context.locals.user?.email?.trim().toLowerCase();
-    // Fail closed: require auth wired, an owner configured, and an exact match.
-    if (!auth || !OWNER || !email || email !== OWNER) {
+    const email = context.locals.user?.email;
+    // Fail closed: require auth wired and the session email on the allowlist.
+    // isAllowed() always includes the owner, so an empty list still lets the
+    // owner in and no one else.
+    if (!auth || !isAllowed(email)) {
       return context.redirect('/admin/login');
     }
   }

@@ -2,7 +2,7 @@
 export const prerender = false;
 import '../../styles/global.css';
 import AdminLogin from '../../components/islands/AdminLogin.tsx';
-import { auth } from '../../lib/auth';
+import { auth, googleReady } from '../../lib/auth';
 
 const configured = Boolean(auth);
 const signedIn = Boolean(auth && Astro.locals.user);
@@ -33,7 +33,7 @@ const email = Astro.locals.user?.email ?? '';
       <div class="rounded-2xl border border-border bg-bg-elevated/40 p-6">
         {
           configured ? (
-            <AdminLogin client:load signedIn={signedIn} email={email} />
+            <AdminLogin client:load signedIn={signedIn} email={email} googleReady={googleReady} />
           ) : (
             <p class="text-sm text-text-muted">Admin is not configured yet. See SETUP-ADMIN.md.</p>
           )

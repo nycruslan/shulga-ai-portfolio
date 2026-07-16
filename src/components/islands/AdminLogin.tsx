@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { authClient } from '../../lib/auth-client';
 
-type Props = { signedIn?: boolean; email?: string };
+type Props = { signedIn?: boolean; email?: string; googleReady?: boolean };
 
 const PRIMARY =
   'w-full rounded-lg bg-text px-3.5 py-2.5 text-sm font-medium text-bg transition-colors hover:bg-white disabled:opacity-50';
@@ -27,11 +27,22 @@ function Feedback({ note }: { note: Note }) {
   );
 }
 
-export default function AdminLogin({ signedIn = false, email: initialEmail = '' }: Props) {
+export default function AdminLogin({
+  signedIn = false,
+  email: initialEmail = '',
+  googleReady = false,
+}: Props) {
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
-  const [note, setNote] = useState<Note>(null);
+  const [note, setNote] = useState<Note>(() =>
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('denied')
+      ? { text: 'That account is not on the admin allowlist.', error: true }
+      : null,
+  );
   const [busy, setBusy] = useState(false);
+  // Open the password fallback by default when Google isn't wired, so there's
+  // always a visible way in.
+  const [showPassword, setShowPassword] = useState(!googleReady);
 
   async function go(label: string, fn: () => Promise<{ error?: { message?: string } | null }>) {
     setBusy(true);
@@ -51,6 +62,24 @@ export default function AdminLogin({ signedIn = false, email: initialEmail = '' 
     } catch (e) {
       setNote({ text: e instanceof Error ? e.message : 'Failed', error: true });
     } finally {
+      setBusy(false);
+    }
+  }
+
+  async function google() {
+    setBusy(true);
+    setNote({ text: 'Redirecting to Google…' });
+    try {
+      // Redirects the browser to Google, then back to /admin on success. The
+      // allowlist is enforced server-side, so a non-invited Google email is
+      // bounced with an error rather than getting an account.
+      await authClient.signIn.social({
+        provider: 'google',
+        callbackURL: '/admin',
+        errorCallbackURL: '/admin/login?denied=1',
+      });
+    } catch (e) {
+      setNote({ text: e instanceof Error ? e.message : 'Failed', error: true });
       setBusy(false);
     }
   }
@@ -100,61 +129,63 @@ export default function AdminLogin({ signedIn = false, email: initialEmail = '' 
     );
   }
 
-  // Signed out: passkey, then email/password, then first-run account creation.
+  // Signed out: Google one-click and passkey are the two real doors. Email +
+  // password is kept only as an owner break-glass, tucked behind a toggle.
   return (
     <div className="grid gap-3">
+      {googleReady && (
+        <button className={PRIMARY} disabled={busy} onClick={google}>
+          Continue with Google
+        </button>
+      )}
       <button
-        className={PRIMARY}
+        className={googleReady ? GHOST : PRIMARY}
         disabled={busy}
         onClick={() => go('Follow your device prompt…', () => authClient.signIn.passkey())}
       >
-        Sign in with passkey
+        Sign in with a passkey
       </button>
-
-      <div className="flex items-center gap-3 text-[11px] uppercase tracking-wider text-text-subtle">
-        <span className="h-px flex-1 bg-border" /> or email{' '}
-        <span className="h-px flex-1 bg-border" />
-      </div>
-
-      <form
-        className="grid gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          go('Signing in…', () => authClient.signIn.email({ email, password }));
-        }}
-      >
-        <input
-          className={INPUT}
-          type="email"
-          placeholder="email"
-          autoComplete="username"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          className={INPUT}
-          type="password"
-          placeholder="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <button className={GHOST} type="submit" disabled={busy}>
-          Sign in
-        </button>
-      </form>
 
       <button
         className={SUBTLE}
         disabled={busy}
-        onClick={() =>
-          go('Creating account…', () => authClient.signUp.email({ email, password, name: 'Owner' }))
-        }
+        onClick={() => setShowPassword((v) => !v)}
+        aria-expanded={showPassword}
       >
-        First time? Create the owner account
+        {showPassword ? 'Hide password sign-in' : 'Use email & password instead'}
       </button>
+
+      {showPassword && (
+        <form
+          className="grid gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            go('Signing in…', () => authClient.signIn.email({ email, password }));
+          }}
+        >
+          <input
+            className={INPUT}
+            type="email"
+            placeholder="email"
+            autoComplete="username"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <input
+            className={INPUT}
+            type="password"
+            placeholder="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <button className={GHOST} type="submit" disabled={busy}>
+            Sign in
+          </button>
+        </form>
+      )}
 
       <Feedback note={note} />
     </div>
