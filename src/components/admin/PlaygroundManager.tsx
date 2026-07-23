@@ -717,7 +717,7 @@ export default function PlaygroundManager({
                   type="number"
                   min={LIMITS.stopPct.min}
                   max={LIMITS.stopPct.max}
-                  step={0.5}
+                  step={0.1}
                   value={stopPct}
                   onChange={(e) => setStopPct(Number(e.target.value))}
                 />
@@ -738,7 +738,7 @@ export default function PlaygroundManager({
                 type="number"
                 min={LIMITS.takeProfitPct.min}
                 max={LIMITS.takeProfitPct.max}
-                step={1}
+                step={0.1}
                 value={takeProfit}
                 onChange={(e) => setTakeProfit(e.target.value === '' ? '' : Number(e.target.value))}
               />

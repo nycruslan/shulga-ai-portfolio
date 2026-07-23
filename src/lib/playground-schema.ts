@@ -12,8 +12,8 @@ export const LIMITS = {
   sizePct: { min: 0.5, max: 25 },
   maxPositions: { min: 1, max: 50 },
   sectorCap: { min: 1, max: 10 },
-  stopPct: { min: 2, max: 30 },
-  takeProfitPct: { min: 1, max: 100 },
+  stopPct: { min: 0.1, max: 100 },
+  takeProfitPct: { min: 0.1, max: 100 },
   timeLimitDays: { min: 1, max: 120 },
   maxActive: 10,
 } as const;

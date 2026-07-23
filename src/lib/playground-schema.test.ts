@@ -49,7 +49,8 @@ describe('createPortfolioSchema', () => {
       createPortfolioSchema.safeParse({ ...good, params: { ...good.params, stop } }).success;
     expect(ok({ mode: 'engine' })).toBe(true);
     expect(ok({ mode: 'fixed', pct: 8 })).toBe(true);
-    expect(ok({ mode: 'fixed', pct: 1 })).toBe(false); // below 2% floor
+    expect(ok({ mode: 'fixed', pct: 1 })).toBe(true); // tight stops allowed (floor 0.1)
+    expect(ok({ mode: 'fixed', pct: 0.05 })).toBe(false); // below the 0.1 floor
     expect(ok({ mode: 'tight' })).toBe(false);
     expect(
       createPortfolioSchema.safeParse({
@@ -85,13 +86,19 @@ describe('bracket exits + 1% floor', () => {
     expect(r.success).toBe(true);
     if (r.success) expect(r.data.params.exit_mode).toBe('bracket');
   });
-  it('rejects sub-1% targets and unknown modes', () => {
+  it('rejects sub-0.1% targets and unknown modes', () => {
     expect(
       createPortfolioSchema.safeParse({
         ...base,
-        params: { ...base.params, take_profit_pct: 0.5 },
+        params: { ...base.params, take_profit_pct: 0.05 },
       }).success,
     ).toBe(false);
+    expect(
+      createPortfolioSchema.safeParse({
+        ...base,
+        params: { ...base.params, take_profit_pct: 0.1 },
+      }).success,
+    ).toBe(true);
     expect(
       createPortfolioSchema.safeParse({
         ...base,
