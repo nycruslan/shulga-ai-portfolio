@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { Fragment, useId, useState } from 'react';
 import {
   flexRender,
   getCoreRowModel,
@@ -8,6 +8,7 @@ import {
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table';
+import TradeLifecycle, { captureTone, type TradeFacts } from './TradeLifecycle';
 
 // Row shapes mirror the trader snapshot in lib/turso.ts. Kept local so this
 // client island never imports the server-only Turso module. Every field is
@@ -30,6 +31,10 @@ type Position = {
   gain_r?: number | null;
   pyramid_eligible?: boolean | null;
   thesis?: string | null;
+  stop?: number | null;
+  init_stop?: number | null;
+  peak_pct?: number | null;
+  opened_at?: string | null;
 };
 type Closed = {
   book?: string;
@@ -40,6 +45,12 @@ type Closed = {
   exit_reason?: string | null;
   source?: string | null;
   closed_at?: string | null;
+  opened_at?: string | null;
+  entry?: number | null;
+  exit?: number | null;
+  init_stop?: number | null;
+  peak_pct?: number | null;
+  capture_pct?: number | null;
 };
 type EquityPoint = {
   t?: string;
@@ -102,13 +113,19 @@ function DataTable<T>({
   data,
   columns,
   scroll = false,
+  detail,
 }: {
   data: T[];
   columns: ColumnDef<T, unknown>[];
   scroll?: boolean;
+  // When set, every row becomes expandable and this renders the detail panel
+  // (the per-trade lifecycle chart). One row open at a time — the panel is a
+  // focused inspection, not a comparison wall.
+  detail?: (row: T) => React.ReactNode;
 }) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [filter, setFilter] = useState('');
+  const [openRow, setOpenRow] = useState<string | null>(null);
   const searchable = data.length > 6;
   const filterId = useId();
 
@@ -212,26 +229,76 @@ function DataTable<T>({
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
-                <tr
-                  key={row.id}
-                  className="border-t border-border/70 transition-colors hover:bg-white/[0.02]"
-                >
-                  {row.getVisibleCells().map((cell) => {
-                    const meta = cell.column.columnDef.meta as Meta | undefined;
-                    return (
-                      <td
-                        key={cell.id}
-                        className={
-                          'px-4 py-2.5 ' + alignClass(meta?.align) + ' ' + (meta?.className ?? '')
-                        }
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))
+              rows.map((row) => {
+                const expanded = detail != null && openRow === row.id;
+                return (
+                  <Fragment key={row.id}>
+                    <tr
+                      className={
+                        'border-t border-border/70 transition-colors hover:bg-white/[0.02]' +
+                        (detail ? ' cursor-pointer' : '') +
+                        (expanded ? ' bg-white/[0.03]' : '')
+                      }
+                      onClick={
+                        detail
+                          ? () => setOpenRow((cur) => (cur === row.id ? null : row.id))
+                          : undefined
+                      }
+                    >
+                      {row.getVisibleCells().map((cell, ci) => {
+                        const meta = cell.column.columnDef.meta as Meta | undefined;
+                        return (
+                          <td
+                            key={cell.id}
+                            className={
+                              'px-4 py-2.5 ' +
+                              alignClass(meta?.align) +
+                              ' ' +
+                              (meta?.className ?? '')
+                            }
+                          >
+                            {detail && ci === 0 ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  aria-expanded={expanded}
+                                  aria-label={
+                                    (expanded ? 'Hide' : 'Show') + ' trade lifecycle chart'
+                                  }
+                                  onClick={(e) => {
+                                    // The row onClick covers pointer users; keep
+                                    // the button for keyboard/AT without firing twice.
+                                    e.stopPropagation();
+                                    setOpenRow((cur) => (cur === row.id ? null : row.id));
+                                  }}
+                                  className={
+                                    'inline-block w-3 text-center text-[10px] transition-transform ' +
+                                    (expanded
+                                      ? 'rotate-90 text-text'
+                                      : 'text-text-subtle hover:text-text')
+                                  }
+                                >
+                                  ▶
+                                </button>
+                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                              </span>
+                            ) : (
+                              flexRender(cell.column.columnDef.cell, cell.getContext())
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    {expanded && (
+                      <tr className="border-t border-border/40 bg-bg/40">
+                        <td colSpan={columns.length} className="p-0">
+                          {detail(row.original)}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -324,6 +391,25 @@ const positionColumns: ColumnDef<Position, unknown>[] = [
         : (row.original.gain_r > 0 ? '+' : '') + row.original.gain_r + 'R',
   },
   {
+    accessorKey: 'peak_pct',
+    header: 'Peak',
+    meta: { align: 'right', className: 'whitespace-nowrap font-mono tabular-nums' },
+    cell: ({ row }) => {
+      const p = row.original;
+      if (p.peak_pct == null) return <span className="text-text-subtle">—</span>;
+      // Amber: was ≥+5% ahead but sits at/below flat now — a round-trip in progress.
+      const fading = p.peak_pct >= 5 && (p.pnl_pct ?? 0) <= 0;
+      return (
+        <span
+          className={fading ? 'text-amber-300' : 'text-text-muted'}
+          title={fading ? 'was ahead ≥5%, now flat or down — giving the gain back' : 'best unrealized gain so far'}
+        >
+          +{p.peak_pct}%
+        </span>
+      );
+    },
+  },
+  {
     accessorKey: 'pnl_usd',
     header: 'P&L $',
     meta: { align: 'right', className: 'whitespace-nowrap font-mono tabular-nums text-text-muted' },
@@ -411,6 +497,36 @@ const closedColumns: ColumnDef<Closed, unknown>[] = [
           : (row.original.return_pct > 0 ? '+' : '') + row.original.return_pct + '%'}
       </span>
     ),
+  },
+  {
+    accessorKey: 'peak_pct',
+    header: 'Peak',
+    meta: { align: 'right', className: 'whitespace-nowrap font-mono tabular-nums text-text-muted' },
+    cell: ({ row }) =>
+      row.original.peak_pct == null ? (
+        <span className="text-text-subtle" title="no peak recorded (pre-watermark trade or never above entry)">
+          —
+        </span>
+      ) : (
+        <span title="best unrealized gain the trade reached">+{row.original.peak_pct}%</span>
+      ),
+  },
+  {
+    accessorKey: 'capture_pct',
+    header: 'Kept',
+    meta: { align: 'right', className: 'whitespace-nowrap font-mono tabular-nums' },
+    cell: ({ row }) => {
+      const c = row.original;
+      if (c.capture_pct == null) return <span className="text-text-subtle">—</span>;
+      return (
+        <span
+          className={captureTone(c.peak_pct, c.capture_pct)}
+          title="% of the peak gain the exit kept — ~100 sold near the top, ≤0 round-tripped"
+        >
+          {c.capture_pct}%
+        </span>
+      );
+    },
   },
   {
     accessorKey: 'pnl_usd',
@@ -614,6 +730,49 @@ const Empty = ({ children }: { children: React.ReactNode }) => (
   <p className="text-sm text-text-muted">{children}</p>
 );
 
+// ── Per-trade lifecycle detail (expandable row) ──────────────────────────────
+
+const positionFacts = (p: Position): TradeFacts | null =>
+  p.symbol && p.opened_at
+    ? {
+        symbol: p.symbol,
+        book: p.book,
+        opened_at: p.opened_at,
+        entry: p.entry,
+        init_stop: p.init_stop,
+        stop: p.stop,
+        peak_pct: p.peak_pct,
+        result_pct: p.pnl_pct,
+      }
+    : null;
+
+const closedFacts = (c: Closed): TradeFacts | null =>
+  c.symbol && c.opened_at
+    ? {
+        symbol: c.symbol,
+        book: c.book,
+        opened_at: c.opened_at,
+        closed_at: c.closed_at,
+        entry: c.entry,
+        exit: c.exit,
+        init_stop: c.init_stop,
+        peak_pct: c.peak_pct,
+        result_pct: c.return_pct,
+      }
+    : null;
+
+function LifecycleDetail({ facts }: { facts: TradeFacts | null }) {
+  if (!facts) {
+    return (
+      <p className="px-4 py-4 text-xs text-text-muted">
+        No lifecycle data for this row (published before the chart fields existed — the next
+        snapshot will carry them).
+      </p>
+    );
+  }
+  return <TradeLifecycle trade={facts} />;
+}
+
 const CURVE_LABELS: Record<string, string> = {
   stock: 'Stocks',
   crypto: 'Crypto',
@@ -670,7 +829,12 @@ export default function TraderTables({
         {positions.length === 0 ? (
           <Empty>No open positions.</Empty>
         ) : (
-          <DataTable data={positions} columns={positionColumns} scroll={positions.length > 12} />
+          <DataTable
+            data={positions}
+            columns={positionColumns}
+            scroll={positions.length > 12}
+            detail={(p) => <LifecycleDetail facts={positionFacts(p)} />}
+          />
         )}
       </Section>
 
@@ -678,7 +842,12 @@ export default function TraderTables({
         {closed.length === 0 ? (
           <Empty>No closed trades yet.</Empty>
         ) : (
-          <DataTable data={closed} columns={closedColumns} scroll={closed.length > 12} />
+          <DataTable
+            data={closed}
+            columns={closedColumns}
+            scroll={closed.length > 12}
+            detail={(c) => <LifecycleDetail facts={closedFacts(c)} />}
+          />
         )}
       </Section>
     </>

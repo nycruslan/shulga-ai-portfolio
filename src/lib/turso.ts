@@ -160,6 +160,8 @@ export type TraderBook = {
   heat_cap?: number | null;
   stop_exits?: number | null;
   time_exits?: number | null;
+  // Exit quality: avg % of peak gain kept on closed trades that got ≥+5% ahead.
+  capture_avg?: number | null;
   // Live-rail (kind "real" | "broker-paper") alternate fields:
   deployed?: number | null; // dollars at work (cost), not a percent
   realized_usd?: number | null;
@@ -192,6 +194,11 @@ export type TraderPosition = {
   gain_r?: number | null;
   pyramid_eligible?: boolean | null;
   thesis?: string | null;
+  // Lifecycle fields (per-trade chart + peak audit):
+  stop?: number | null; // current stop price
+  init_stop?: number | null; // stop at entry (defines 1R)
+  peak_pct?: number | null; // best unrealized gain so far
+  opened_at?: string | null; // YYYY-MM-DD
 };
 export type TraderCarry = {
   flag?: string; // calm | elevated | unwinding | unknown
@@ -217,6 +224,13 @@ export type TraderClosed = {
   exit_reason?: string | null;
   source?: string | null;
   closed_at?: string | null;
+  // Lifecycle fields (per-trade chart + capture audit):
+  opened_at?: string | null;
+  entry?: number | null;
+  exit?: number | null;
+  init_stop?: number | null; // stop at entry (defines 1R)
+  peak_pct?: number | null; // best unrealized gain the trade reached
+  capture_pct?: number | null; // realized/peak ×100, only when peak ≥ +5%
 };
 // The headline experiment: the AI's $50k stock book vs a deterministic no-AI
 // book that buys the same universe on the same rules. Positive edge = AI adds

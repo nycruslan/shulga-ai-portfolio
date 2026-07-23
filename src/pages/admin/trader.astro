@@ -405,6 +405,14 @@ const verdictTone = (v?: string) =>
                       {typeof b.win_rate === 'number' && (
                         <span class="tabular-nums">{b.win_rate}% win</span>
                       )}
+                      {typeof b.capture_avg === 'number' && (
+                        <span
+                          class="tabular-nums"
+                          title="exit quality: avg % of peak gain kept on closed winners that got ≥5% ahead"
+                        >
+                          kept {b.capture_avg}% of peaks
+                        </span>
+                      )}
                       {typeof b.max_dd === 'number' && (
                         <span class="ml-auto tabular-nums">maxDD {b.max_dd}%</span>
                       )}
@@ -468,6 +476,14 @@ const verdictTone = (v?: string) =>
                           )}
                           {typeof b.win_rate === 'number' && (
                             <span class="ml-auto tabular-nums">{b.win_rate}% win</span>
+                          )}
+                          {typeof b.capture_avg === 'number' && (
+                            <span
+                              class="tabular-nums"
+                              title="exit quality: avg % of peak gain kept on closed winners that got ≥5% ahead"
+                            >
+                              kept {b.capture_avg}% of peaks
+                            </span>
                           )}
                         </div>
                         <div class="mt-1.5 flex flex-wrap items-center gap-x-3 font-mono text-[10px] text-text-subtle">
