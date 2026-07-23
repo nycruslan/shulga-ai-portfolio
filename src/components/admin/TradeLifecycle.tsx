@@ -90,10 +90,10 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
 
   const isCrypto = (trade.book ?? '').toLowerCase().includes('crypto');
 
+  // No synchronous state reset here: the parent mounts this component with a
+  // per-trade `key`, so switching trades remounts fresh (bars/err start null).
   useEffect(() => {
     let alive = true;
-    setBars(null);
-    setErr(null);
     const q = new URLSearchParams({ symbol: trade.symbol, crypto: isCrypto ? '1' : '0' });
     if (trade.opened_at) q.set('from', trade.opened_at);
     if (trade.closed_at) q.set('to', trade.closed_at);

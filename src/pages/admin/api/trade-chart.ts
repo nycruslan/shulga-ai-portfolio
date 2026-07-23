@@ -9,7 +9,7 @@ export const prerender = false;
 // GET /admin/api/trade-chart?symbol=SPY&from=2026-06-01&to=2026-07-10&crypto=0
 // → { t: ["2026-05-27", ...], c: [592.1, ...] }   (padded ±7d around the trade)
 
-const SYMBOL_RE = /^[A-Z0-9.\-]{1,12}$/;
+const SYMBOL_RE = /^[A-Z0-9.-]{1,12}$/;
 const DAY_MS = 86_400_000;
 const PAD_DAYS = 7;
 

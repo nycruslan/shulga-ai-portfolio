@@ -780,7 +780,14 @@ function LifecycleDetail({ facts }: { facts: TradeFacts | null }) {
       </p>
     );
   }
-  return <TradeLifecycle trade={facts} />;
+  // Keyed per trade: a different trade remounts the chart, so its fetch state
+  // starts clean without effect-time setState (react-hooks/set-state-in-effect).
+  return (
+    <TradeLifecycle
+      key={facts.symbol + ':' + (facts.opened_at ?? '') + ':' + (facts.closed_at ?? '')}
+      trade={facts}
+    />
+  );
 }
 
 const CURVE_LABELS: Record<string, string> = {
