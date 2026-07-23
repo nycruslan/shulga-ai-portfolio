@@ -109,7 +109,9 @@ const RealTag = () => (
 
 const alignClass = (a?: Align) => (a === 'right' ? 'text-right' : '');
 
-function DataTable<T>({
+// Exported: the Playground reuses this exact table (sortable, filterable,
+// expandable rows) for its per-portfolio trade lists.
+export function DataTable<T>({
   data,
   columns,
   scroll = false,

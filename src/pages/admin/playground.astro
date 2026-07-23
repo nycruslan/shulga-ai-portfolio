@@ -1,0 +1,104 @@
+---
+export const prerender = false;
+import AdminShell from '../../layouts/AdminShell.astro';
+import PlaygroundManager from '../../components/admin/PlaygroundManager.tsx';
+import { listPlaygroundConfigs, readTraderSnapshot } from '../../lib/turso';
+import { relativeTime } from '../../lib/relative-time';
+
+// Middleware guarantees only the owner reaches /admin/*.
+// Configs are OUR truth (this app writes them); results ride the trader
+// snapshot the VPS publishes every 15 minutes.
+const [configs, result] = await Promise.all([listPlaygroundConfigs(), readTraderSnapshot()]);
+const snap = result.status === 'ok' ? result.snap : null;
+const results = snap?.playground ?? [];
+const updated = snap?.generated_at ? relativeTime(snap.generated_at) : null;
+---
+
+<AdminShell title="Trade Playground">
+  {
+    updated && (
+      <span slot="meta" class="hidden text-xs text-text-subtle sm:inline">
+        results updated {updated}
+      </span>
+    )
+  }
+
+  <p class="mt-6 max-w-2xl text-sm leading-relaxed text-text-muted">
+    Spin up paper portfolios with your own rules and let them race. Every portfolio shops from the
+    same daily scan the real books use, buys deterministically (no AI, no quota), and gets the same
+    mechanical exits — stops, trailing, +2R partials, time limits — enforced by the live monitor.
+    Results update with the trader snapshot.
+  </p>
+
+  <PlaygroundManager client:load configs={configs} results={results} />
+
+  {/* Field guide — the "what exactly does each knob do" footer */}
+  <section class="mt-10 rounded-xl border border-border bg-bg-elevated/30 p-5">
+    <h2 class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">Field guide</h2>
+    <dl class="mt-3 grid gap-x-8 gap-y-3 text-xs leading-relaxed sm:grid-cols-2">
+      <div>
+        <dt class="font-medium text-text">Starting capital</dt>
+        <dd class="text-text-muted">
+          The paper bankroll, fixed at creation. Cash is always derived from the ledger (capital +
+          realized P&amp;L − open cost), so it can never drift.
+        </dd>
+      </div>
+      <div>
+        <dt class="font-medium text-text">Buy rule</dt>
+        <dd class="text-text-muted">
+          Which of the day's STRONG BUYs to take. The scan produces ~5–20 per day (median 13), each
+          with a composite score (~90–99). <em>Top N</em> takes the N highest-scored;
+          <em>Every strong buy</em> mirrors the systematic book; <em>Score threshold</em> only buys above
+          your bar. Already-held names are never re-bought.
+        </dd>
+      </div>
+      <div>
+        <dt class="font-medium text-text">Size % / position</dt>
+        <dd class="text-text-muted">
+          Each position costs this % of starting capital (whole shares only; a buy that can't afford
+          one share is skipped). Buys stop when cash runs out.
+        </dd>
+      </div>
+      <div>
+        <dt class="font-medium text-text">Max positions &amp; sector cap</dt>
+        <dd class="text-text-muted">
+          Concentration rails. Max positions is the hard slot ceiling; sector cap limits names per
+          sector (blank = off). Candidates are considered best-score-first, so rails drop the
+          weakest ideas.
+        </dd>
+      </div>
+      <div>
+        <dt class="font-medium text-text">Stop loss — the "sell when down" rule</dt>
+        <dd class="text-text-muted">
+          Enforced tick-level by the same live monitor that guards the real books.
+          <em> Engine structural</em>: the scan's swing-low stop — respects the chart but can be
+          15–25% wide. <em>Capped</em>: structural, but never wider than your % (the audit showed
+          wide stops drove the big losses). <em>Fixed</em>: exactly your % below entry, structure
+          ignored. After +1R the stop moves to breakeven and then trails price in every mode.
+        </dd>
+      </div>
+      <div>
+        <dt class="font-medium text-text">Take profit — the "sell when up" rule</dt>
+        <dd class="text-text-muted">
+          Sells the whole position once it's up your %. Checked at the two daily runs (10:05 and
+          16:05 ET), <em>not</em> tick-level — an intraday spike between runs won't trigger it. Blank
+          = no target: winners ride the trailing stop and the +2R half-sell instead.
+        </dd>
+      </div>
+      <div>
+        <dt class="font-medium text-text">Time limit</dt>
+        <dd class="text-text-muted">
+          Positions still open after this many days are sold mechanically — momentum that hasn't
+          moved is dead capital.
+        </dd>
+      </div>
+      <div>
+        <dt class="font-medium text-text">Always on, every portfolio</dt>
+        <dd class="text-text-muted">
+          Mechanical exits (stop → breakeven at +1R → trailing stop → +2R half-sell), paper-only
+          isolation, and daily equity snapshots. Pausing stops new buys; exits keep running.
+        </dd>
+      </div>
+    </dl>
+  </section>
+</AdminShell>

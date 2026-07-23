@@ -2,15 +2,16 @@
 export const prerender = false;
 import AdminShell from '../../layouts/AdminShell.astro';
 import { turso } from '../../lib/turso-client';
-import { readSnapshot, readTraderSnapshot } from '../../lib/turso';
+import { listPlaygroundConfigs, readSnapshot, readTraderSnapshot } from '../../lib/turso';
 import { listProposals } from '../../lib/bridge/persistence/proposals';
 import { relativeTime } from '../../lib/relative-time';
 
 // The owner hub: every admin feature as a card with a live stat, so a glance
 // tells you what needs attention. Middleware guarantees only the owner is here.
-const [job, traderResult, pending] = await Promise.all([
+const [job, traderResult, pgConfigs, pending] = await Promise.all([
   readSnapshot().catch(() => null),
   readTraderSnapshot().catch(() => null),
+  listPlaygroundConfigs().catch(() => []),
   turso ? listProposals(turso, 'pending').catch(() => []) : Promise.resolve([]),
 ]);
 // readTraderSnapshot now returns a discriminated result; the hub only needs the
@@ -47,6 +48,17 @@ const features: Feature[] = [
     desc: 'Paper books, market regime, learning, and reflections.',
     stat: trade?.generated_at ? `updated ${relativeTime(trade.generated_at)}` : 'no snapshot yet',
     alert: tradeStaleMin != null && tradeStaleMin > 25,
+  },
+  {
+    href: '/admin/playground',
+    label: 'Markets',
+    name: 'Trade Playground',
+    desc: 'Create paper portfolios with your own rules and let them race.',
+    stat: (() => {
+      const n = pgConfigs.filter((p) => p.status === 'active').length;
+      return n ? `${n} active portfolio${n === 1 ? '' : 's'}` : 'none yet — create one';
+    })(),
+    alert: false,
   },
   {
     href: '/admin/bridge',

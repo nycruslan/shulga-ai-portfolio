@@ -1,4 +1,11 @@
 import { createClient } from '@libsql/client';
+import {
+  createPortfolioSchema,
+  statusSchema,
+  type CreatePortfolioInput,
+  type PlaygroundConfig,
+  type PlaygroundStatus,
+} from './playground-schema';
 import { TURSO_DATABASE_URL, TURSO_AUTH_TOKEN } from 'astro:env/server';
 
 export type Snapshot = {
@@ -247,6 +254,27 @@ export type EquityPoint = {
   ret_pct?: number | null;
   bench_pct?: number | null;
 };
+// Playground: results published by the VPS for each UI-configured portfolio.
+// Config truth lives in the playground_portfolios Turso table (this app writes
+// it); THESE rows are the trading side's ledger view, keyed by the same id.
+export type PlaygroundResult = {
+  id?: string;
+  name?: string;
+  status?: string;
+  params?: Record<string, unknown>;
+  capital?: number | null;
+  cash?: number | null;
+  equity?: number | null;
+  pnl_pct?: number | null;
+  open_n?: number | null;
+  closed_n?: number | null;
+  win_rate?: number | null;
+  capture_avg?: number | null;
+  created_at?: string;
+  positions?: TraderPosition[];
+  closed?: TraderClosed[];
+  curve?: EquityPoint[];
+};
 export type TraderSnapshot = {
   schema_version?: number;
   generated_at?: string;
@@ -254,6 +282,7 @@ export type TraderSnapshot = {
   books?: TraderBook[];
   positions?: TraderPosition[];
   closed?: TraderClosed[];
+  playground?: PlaygroundResult[];
   equity_curve?: Record<string, EquityPoint[]>;
   decision_test?: DecisionTest;
   learning?: Record<string, unknown>;
@@ -298,6 +327,7 @@ function normalizeTraderSnapshot(raw: unknown): TraderSnapshot {
     reflections: asArray(p.reflections),
     macro_events: asArray<TraderMacroEvent>(p.macro_events),
     degraded: asArray<string>(p.degraded),
+    playground: asArray<PlaygroundResult>(p.playground),
   };
 }
 
@@ -311,5 +341,92 @@ export async function readTraderSnapshot(): Promise<TraderSnapshotResult> {
   } catch (err) {
     console.error('[turso] readTraderSnapshot failed:', err);
     return { status: 'error' };
+  }
+}
+
+// ── Trade Playground configs (this app is the WRITER; the VPS syncs them) ────
+
+async function ensurePlaygroundTable(): Promise<void> {
+  await client!.execute(
+    'CREATE TABLE IF NOT EXISTS playground_portfolios (' +
+      'id TEXT PRIMARY KEY, name TEXT NOT NULL, params_json TEXT NOT NULL, ' +
+      "status TEXT NOT NULL DEFAULT 'active', capital REAL NOT NULL, " +
+      'created_at TEXT, updated_at TEXT)',
+  );
+}
+
+export async function listPlaygroundConfigs(): Promise<PlaygroundConfig[]> {
+  if (!client) return [];
+  try {
+    await ensurePlaygroundTable();
+    const rs = await client.execute(
+      'SELECT id, name, params_json, status, capital, created_at, updated_at ' +
+        'FROM playground_portfolios ORDER BY created_at',
+    );
+    return rs.rows.flatMap((r) => {
+      try {
+        return [
+          {
+            id: String(r.id),
+            name: String(r.name),
+            params: JSON.parse(String(r.params_json)),
+            status: statusSchema.catch('paused').parse(String(r.status)),
+            capital: Number(r.capital),
+            created_at: r.created_at == null ? undefined : String(r.created_at),
+            updated_at: r.updated_at == null ? undefined : String(r.updated_at),
+          } satisfies PlaygroundConfig,
+        ];
+      } catch {
+        return [];
+      }
+    });
+  } catch (err) {
+    console.error('[turso] listPlaygroundConfigs failed:', err);
+    return [];
+  }
+}
+
+export async function createPlaygroundConfig(
+  input: CreatePortfolioInput,
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  if (!client) return { ok: false, error: 'Turso not configured' };
+  const parsed = createPortfolioSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'invalid' };
+  try {
+    await ensurePlaygroundTable();
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await client.execute({
+      sql:
+        'INSERT INTO playground_portfolios (id, name, params_json, status, capital, created_at, updated_at) ' +
+        "VALUES (?, ?, ?, 'active', ?, ?, ?)",
+      args: [
+        id,
+        parsed.data.name,
+        JSON.stringify(parsed.data.params),
+        parsed.data.capital,
+        now,
+        now,
+      ],
+    });
+    return { ok: true, id };
+  } catch (err) {
+    console.error('[turso] createPlaygroundConfig failed:', err);
+    return { ok: false, error: 'write failed' };
+  }
+}
+
+export async function setPlaygroundStatus(id: string, status: PlaygroundStatus): Promise<boolean> {
+  if (!client || !id) return false;
+  try {
+    await ensurePlaygroundTable();
+    const rs = await client.execute({
+      sql: 'UPDATE playground_portfolios SET status = ?, updated_at = ? WHERE id = ?',
+      args: [status, new Date().toISOString(), id],
+    });
+    return rs.rowsAffected > 0;
+  } catch (err) {
+    console.error('[turso] setPlaygroundStatus failed:', err);
+    return false;
   }
 }
