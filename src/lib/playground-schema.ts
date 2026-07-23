@@ -13,7 +13,7 @@ export const LIMITS = {
   maxPositions: { min: 1, max: 50 },
   sectorCap: { min: 1, max: 10 },
   stopPct: { min: 2, max: 30 },
-  takeProfitPct: { min: 2, max: 100 },
+  takeProfitPct: { min: 1, max: 100 },
   timeLimitDays: { min: 1, max: 120 },
   maxActive: 10,
 } as const;
@@ -42,8 +42,14 @@ export const stopSchema = z.discriminatedUnion('mode', [
   }),
 ]);
 
+export const exitModeSchema = z.enum(['managed', 'bracket']);
+
 export const paramsSchema = z.object({
   buy_rule: buyRuleSchema,
+  // managed: mechanical stack (breakeven/trail/ratchet/+2R partial) + optional TP.
+  // bracket: sell EACH position ONLY at its own profit % / stop / time limit —
+  // no trail, no ratchet, no partial. TP is enforced tick-level by the monitor.
+  exit_mode: exitModeSchema.default('managed'),
   include_plain_buys: z.boolean().default(false),
   size_pct: z.number().min(LIMITS.sizePct.min).max(LIMITS.sizePct.max).default(5),
   max_positions: z
@@ -110,6 +116,11 @@ export function describeParams(p: PlaygroundParams): string {
     `${p.size_pct}% of capital per position`,
     `max ${p.max_positions} open`,
   ];
+  if (p.exit_mode === 'bracket') {
+    bits.push(
+      `then each position sells ONLY at ${p.take_profit_pct != null ? `+${p.take_profit_pct}% profit, ` : ''}its stop, or the ${p.time_limit_days}d limit (simple bracket — no trailing)`,
+    );
+  }
   if (p.sector_cap != null) bits.push(`≤ ${p.sector_cap}/sector`);
   bits.push(
     p.stop.mode === 'fixed'
@@ -118,12 +129,10 @@ export function describeParams(p: PlaygroundParams): string {
         ? `stops capped at ${p.stop.pct}%`
         : 'engine structural stops',
   );
-  if (p.take_profit_pct != null) bits.push(`take profit at +${p.take_profit_pct}%`);
+  if (p.exit_mode === 'bracket') {
+    return bits.join(' · ') + '.';
+  }
+  if (p.take_profit_pct != null) bits.push(`take profit at +${p.take_profit_pct}% (tick-level)`);
   bits.push(`${p.time_limit_days}d time limit`);
-  return (
-    bits.join(' · ') +
-    '. Exits are mechanical (stop / trail / +2R partial / time' +
-    (p.take_profit_pct != null ? ' / daily take-profit' : '') +
-    ').'
-  );
+  return bits.join(' · ') + '. Exits are mechanical (stop / trail / ratchet / +2R partial / time).';
 }

@@ -27,22 +27,38 @@ export const POST: APIRoute = async ({ request }) => {
   } catch {
     return json({ error: 'invalid JSON' }, 400);
   }
+  // Edit-as-new-version: configs are immutable (a mid-experiment mutation
+  // would corrupt results), so "edit" = create the new version, then archive
+  // the old one. Its open positions keep their exits; only new buys stop.
+  const replacesId =
+    body &&
+    typeof body === 'object' &&
+    typeof (body as { replaces_id?: unknown }).replaces_id === 'string'
+      ? (body as { replaces_id: string }).replaces_id
+      : null;
   const parsed = createPortfolioSchema.safeParse(body);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     return json({ error: `${issue?.path.join('.') || 'input'}: ${issue?.message}` }, 400);
   }
   // Cap ACTIVE portfolios, not total — archived experiments don't count, and
-  // the VPS runner enforces the same ceiling on its side.
+  // the VPS runner enforces the same ceiling on its side. A replaced portfolio
+  // is about to be archived, so it doesn't count against either check.
   const existing = await listPlaygroundConfigs();
-  if (existing.filter((p) => p.status === 'active').length >= LIMITS.maxActive) {
+  const others = existing.filter((p) => p.id !== replacesId);
+  if (others.filter((p) => p.status === 'active').length >= LIMITS.maxActive) {
     return json({ error: `max ${LIMITS.maxActive} active portfolios — archive one first` }, 409);
   }
-  if (existing.some((p) => p.name.toLowerCase() === parsed.data.name.toLowerCase())) {
+  if (others.some((p) => p.name.toLowerCase() === parsed.data.name.toLowerCase())) {
     return json({ error: 'a portfolio with that name already exists' }, 409);
   }
+  if (replacesId && !existing.some((p) => p.id === replacesId)) {
+    return json({ error: 'the portfolio being edited no longer exists' }, 404);
+  }
   const res = await createPlaygroundConfig(parsed.data);
-  return res.ok ? json({ id: res.id }, 201) : json({ error: res.error }, 500);
+  if (!res.ok) return json({ error: res.error }, 500);
+  if (replacesId) await setPlaygroundStatus(replacesId, 'archived');
+  return json({ id: res.id }, 201);
 };
 
 export const PATCH: APIRoute = async ({ request }) => {

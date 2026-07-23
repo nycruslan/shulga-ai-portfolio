@@ -330,6 +330,10 @@ export default function PlaygroundManager({
   const [capital, setCapital] = useState(25_000);
   const [ruleType, setRuleType] = useState<'top_n' | 'all' | 'min_score'>('top_n');
   const [plainBuys, setPlainBuys] = useState(false);
+  const [exitMode, setExitMode] = useState<'managed' | 'bracket'>('managed');
+  // Edit-as-new-version: prefill from an existing card; on submit the old
+  // version is archived atomically by the API (configs are immutable).
+  const [replacesId, setReplacesId] = useState<string | null>(null);
   const [topN, setTopN] = useState(5);
   const [minScore, setMinScore] = useState(95);
   const [sizePct, setSizePct] = useState(5);
@@ -351,6 +355,7 @@ export default function PlaygroundManager({
             ? { type: 'all' }
             : { type: 'min_score', min_score: minScore },
       include_plain_buys: plainBuys,
+      exit_mode: exitMode,
       size_pct: sizePct,
       max_positions: maxPositions,
       sector_cap: sectorCap === '' ? null : sectorCap,
@@ -383,6 +388,31 @@ export default function PlaygroundManager({
     }
   }
 
+  function prefillFrom(c: PlaygroundConfig) {
+    const parsed = paramsSchema.safeParse(c.params);
+    if (!parsed.success) return;
+    const p = parsed.data;
+    setName(c.name.replace(/ v(\d+)$/, '') + ' v2');
+    setCapital(c.capital);
+    setRuleType(p.buy_rule.type);
+    if (p.buy_rule.type === 'top_n') setTopN(p.buy_rule.n);
+    if (p.buy_rule.type === 'min_score') setMinScore(p.buy_rule.min_score);
+    setPlainBuys(p.include_plain_buys);
+    setExitMode(p.exit_mode);
+    setSizePct(p.size_pct);
+    setMaxPositions(p.max_positions);
+    setSectorCap(p.sector_cap ?? '');
+    setStopMode(p.stop.mode);
+    if (p.stop.mode !== 'engine') setStopPct(p.stop.pct);
+    setTakeProfit(p.take_profit_pct ?? '');
+    setTimeLimit(p.time_limit_days);
+    setReplacesId(c.id);
+    setShowForm(true);
+    setNote({
+      text: `Editing "${c.name}" as a new version — creating it archives the old one (its open positions keep their exits).`,
+    });
+  }
+
   async function create(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -391,7 +421,7 @@ export default function PlaygroundManager({
       const r = await fetch('/admin/api/playground', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), capital, params }),
+        body: JSON.stringify({ name: name.trim(), capital, params, replaces_id: replacesId }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) {
@@ -399,6 +429,7 @@ export default function PlaygroundManager({
       } else {
         setNote({ text: `✓ "${name.trim()}" created — first buys at the next market open.` });
         setName('');
+        setReplacesId(null);
         setShowForm(false);
         await refresh();
         if (data.id) setSelectedId(data.id);
@@ -638,6 +669,25 @@ export default function PlaygroundManager({
 
           <div className="grid gap-3 sm:grid-cols-3">
             <div>
+              <label htmlFor="pg-exitmode" className={LABEL}>
+                Exit style
+              </label>
+              <select
+                id="pg-exitmode"
+                className={INPUT}
+                value={exitMode}
+                onChange={(e) => setExitMode(e.target.value as typeof exitMode)}
+              >
+                <option value="managed">Managed (mechanical stack)</option>
+                <option value="bracket">Simple bracket (my % only)</option>
+              </select>
+              <p className={HELP}>
+                {exitMode === 'bracket'
+                  ? 'Each position sells ONLY at your profit %, its stop, or the time limit. No trailing, no ratchet, no partial sells — pure bracket.'
+                  : 'Breakeven arming, peak ratchet, trailing stop and +2R partial manage each position; your profit % (if set) adds a tick-level target on top.'}
+              </p>
+            </div>
+            <div>
               <label htmlFor="pg-stopmode" className={LABEL}>
                 Stop loss (sell when down)
               </label>
@@ -693,9 +743,16 @@ export default function PlaygroundManager({
                 onChange={(e) => setTakeProfit(e.target.value === '' ? '' : Number(e.target.value))}
               />
               <p className={HELP}>
-                Sell everything at +this %. Checked at the two daily runs (10:05 &amp; 16:05 ET),
-                not tick-level. Blank = let the trail ride winners.
+                Sell each position at +this % above ITS entry — enforced tick-level by the live
+                monitor. Blank = no target
+                {exitMode === 'managed' ? ' (the trail rides winners)' : ''}.
               </p>
+              {takeProfit !== '' && takeProfit < 3 && (
+                <p className="mt-1 text-[10px] leading-snug text-amber-300">
+                  ⚠ Targets under ~3% mostly sell daily noise: expect many tiny wins and capped
+                  winners. Your experiment to run — that's what the playground is for.
+                </p>
+              )}
             </div>
           </div>
 
@@ -843,6 +900,17 @@ export default function PlaygroundManager({
                     Resume
                   </button>
                 )}
+                <button
+                  type="button"
+                  className={BTN}
+                  disabled={busy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    prefillFrom(c);
+                  }}
+                >
+                  Edit
+                </button>
                 <button
                   type="button"
                   className={BTN}
