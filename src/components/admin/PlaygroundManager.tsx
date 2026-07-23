@@ -9,7 +9,7 @@ import {
   type PlaygroundStatus,
 } from '../../lib/playground-schema';
 import { DataTable } from './TraderTables';
-import TradeLifecycle, { captureTone, fmtPx } from './TradeLifecycle';
+import TradeLifecycle, { captureTone, fmtPx, type TradeEvent } from './TradeLifecycle';
 
 // Trade Playground: create paper portfolios with your own rules, watch them
 // race. Config truth is Turso (written here); results arrive through the
@@ -28,6 +28,7 @@ type OpenRow = {
   opened_at?: string | null;
   days_held?: number | null;
   sector?: string | null;
+  events?: TradeEvent[] | null;
 };
 type ClosedRow = {
   symbol?: string;
@@ -41,6 +42,7 @@ type ClosedRow = {
   peak_pct?: number | null;
   capture_pct?: number | null;
   init_stop?: number | null;
+  events?: TradeEvent[] | null;
 };
 type Result = {
   id?: string;
@@ -223,6 +225,7 @@ function PortfolioTrades({ name, result }: { name: string; result?: Result }) {
                     stop: o.stop,
                     peak_pct: o.peak_pct,
                     result_pct: o.pnl_pct,
+                    events: o.events,
                   }}
                 />
               ) : (
@@ -257,6 +260,7 @@ function PortfolioTrades({ name, result }: { name: string; result?: Result }) {
                     init_stop: c.init_stop,
                     peak_pct: c.peak_pct,
                     result_pct: c.return_pct,
+                    events: c.events,
                   }}
                 />
               ) : (

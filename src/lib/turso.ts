@@ -183,6 +183,13 @@ export type TraderBook = {
   pnl_basis?: 'account' | 'deployed' | null; // what pnl_pct measures
   marked?: boolean; // every holding got a live mark (else some fell back to cost)
 };
+export type TradeEvent = {
+  kind?: 'add' | 'partial';
+  ts?: string; // YYYY-MM-DD
+  price?: number | null;
+  qty?: number | null;
+  note?: string | null;
+};
 export type TraderPosition = {
   book?: string;
   symbol?: string;
@@ -206,6 +213,7 @@ export type TraderPosition = {
   init_stop?: number | null; // stop at entry (defines 1R)
   peak_pct?: number | null; // best unrealized gain so far
   opened_at?: string | null; // YYYY-MM-DD
+  events?: TradeEvent[] | null; // scale-in adds + partial sells (chart markers)
 };
 export type TraderCarry = {
   flag?: string; // calm | elevated | unwinding | unknown
@@ -238,6 +246,7 @@ export type TraderClosed = {
   init_stop?: number | null; // stop at entry (defines 1R)
   peak_pct?: number | null; // best unrealized gain the trade reached
   capture_pct?: number | null; // realized/peak ×100, only when peak ≥ +5%
+  events?: TradeEvent[] | null; // scale-in adds + partial sells (chart markers)
 };
 // The headline experiment: the AI's $50k stock book vs a deterministic no-AI
 // book that buys the same universe on the same rules. Positive edge = AI adds

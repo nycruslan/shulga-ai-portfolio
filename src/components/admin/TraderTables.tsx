@@ -8,7 +8,7 @@ import {
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table';
-import TradeLifecycle, { captureTone, type TradeFacts } from './TradeLifecycle';
+import TradeLifecycle, { captureTone, type TradeEvent, type TradeFacts } from './TradeLifecycle';
 
 // Row shapes mirror the trader snapshot in lib/turso.ts. Kept local so this
 // client island never imports the server-only Turso module. Every field is
@@ -35,6 +35,7 @@ type Position = {
   init_stop?: number | null;
   peak_pct?: number | null;
   opened_at?: string | null;
+  events?: TradeEvent[] | null;
 };
 type Closed = {
   book?: string;
@@ -51,6 +52,7 @@ type Closed = {
   init_stop?: number | null;
   peak_pct?: number | null;
   capture_pct?: number | null;
+  events?: TradeEvent[] | null;
 };
 type EquityPoint = {
   t?: string;
@@ -755,6 +757,7 @@ const positionFacts = (p: Position): TradeFacts | null =>
         stop: p.stop,
         peak_pct: p.peak_pct,
         result_pct: p.pnl_pct,
+        events: p.events,
       }
     : null;
 
@@ -770,6 +773,7 @@ const closedFacts = (c: Closed): TradeFacts | null =>
         init_stop: c.init_stop,
         peak_pct: c.peak_pct,
         result_pct: c.return_pct,
+        events: c.events,
       }
     : null;
 

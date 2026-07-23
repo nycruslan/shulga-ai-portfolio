@@ -15,6 +15,14 @@ import type {
 // the effect: this component only mounts client-side on row expand, and the
 // canvas engine has no business in the SSR bundle.
 
+export type TradeEvent = {
+  kind?: 'add' | 'partial';
+  ts?: string; // YYYY-MM-DD
+  price?: number | null;
+  qty?: number | null;
+  note?: string | null;
+};
+
 export type TradeFacts = {
   symbol: string;
   book?: string;
@@ -26,6 +34,7 @@ export type TradeFacts = {
   stop?: number | null; // current stop (open trades; may have trailed up)
   peak_pct?: number | null;
   result_pct?: number | null; // realized (closed) or unrealized (open)
+  events?: TradeEvent[] | null; // scale-in adds (＋) + partial sells (½)
 };
 
 type Bars = { t: string[]; c: number[] };
@@ -240,6 +249,37 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
           text: `SELL ${result != null ? (result >= 0 ? '+' : '') + result + '%' : ''}`,
         });
       }
+
+      // Mid-trade events: scale-in adds (＋, a second buy) and +2R partial
+      // sells (½, half banked into strength). Each snaps to the first bar on or
+      // after its date; an event outside the fetched window is skipped, never
+      // crashes. Adds read as buys (green, below); partials as profit-taking
+      // (amber, above) — distinct shape from the entry/exit arrows.
+      for (const ev of trade.events ?? []) {
+        if (!ev?.ts) continue;
+        const i = indexOnOrAfter(t, ev.ts);
+        if (i < 0) continue;
+        if (ev.kind === 'add') {
+          markers.push({
+            time: t[i] as Time,
+            position: 'belowBar',
+            color: C.buy,
+            shape: 'square',
+            text: `＋ added${ev.price ? ' ' + fmtPx(ev.price) : ''}`,
+          });
+        } else if (ev.kind === 'partial') {
+          markers.push({
+            time: t[i] as Time,
+            position: 'aboveBar',
+            color: C.peak,
+            shape: 'square',
+            text: `½ sold${ev.note ? ' ' + ev.note : ''}`,
+          });
+        }
+      }
+
+      // Lightweight-charts requires markers in ascending time order.
+      markers.sort((a, b) => String(a.time).localeCompare(String(b.time)));
       createSeriesMarkers(series, markers);
 
       // Pointer readout (TradingView-style legend): date · price · % vs entry.
