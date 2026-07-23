@@ -1,7 +1,9 @@
 ---
 export const prerender = false;
 import AdminShell from '../../layouts/AdminShell.astro';
-import TraderTables from '../../components/admin/TraderTables.tsx';
+import DeckTabs from '../../components/admin/DeckTabs.astro';
+import { PositionsTable, ClosedTable } from '../../components/admin/TraderTables.tsx';
+import { EquityDeck, BookCurves } from '../../components/admin/EquityCharts.tsx';
 import {
   readTraderSnapshot,
   type TraderBook,
@@ -46,6 +48,34 @@ const macroEvents = (snap?.macro_events ?? []) as TraderMacroEvent[];
 const reflections = snap?.reflections ?? [];
 const degraded = snap?.degraded ?? [];
 const decision = snap?.decision_test;
+const positions = snap?.positions ?? [];
+const closed = snap?.closed ?? [];
+
+// The publisher writes a row every 15 minutes but stamps each with a bare date,
+// so a 17-day curve arrives as 90 points that collapse to 13 the moment it's
+// charted. Reduce to one point per date (the last write is that day's close)
+// and drop the fields the charts never read, BEFORE this gets serialized —
+// it is embedded twice, once per island, so every wasted byte is paid twice.
+type RawPoint = { t?: string; equity?: number | null; bench_pct?: number | null };
+type DayPoint = { t: string; equity: number; bench_pct?: number };
+const dailyCurve = (pts: RawPoint[]): DayPoint[] => {
+  const byDay = new Map<string, DayPoint>();
+  for (const p of pts) {
+    if (!p.t || p.equity == null) continue;
+    // Array order is publish order, so a later row for the same date overwrites
+    // the earlier one and the map ends up holding each day's close.
+    byDay.set(
+      p.t,
+      typeof p.bench_pct === 'number'
+        ? { t: p.t, equity: p.equity, bench_pct: p.bench_pct }
+        : { t: p.t, equity: p.equity },
+    );
+  }
+  return [...byDay.values()].sort((a, b) => a.t.localeCompare(b.t));
+};
+const equityCurve = Object.fromEntries(
+  Object.entries(snap?.equity_curve ?? {}).map(([k, pts]) => [k, dailyCurve(pts ?? [])]),
+);
 
 // Group the 9 books: paper sleeves together, then the control + live rails set
 // apart (real money must never blend in with a paper sleeve).
@@ -62,27 +92,25 @@ const ageMin = updatedDate ? (Date.now() - updatedDate.getTime()) / 60000 : null
 const stale = ageMin != null && ageMin > 25; // publisher runs every 15 min
 
 const pct = (v: unknown) => (typeof v === 'number' ? `${v > 0 ? '+' : ''}${v.toFixed(1)}%` : '—');
+// P&L polarity rides the reserved gain/loss tokens, never a categorical hue.
 const tone = (v: unknown) =>
-  typeof v !== 'number' ? '' : v > 0.05 ? 'text-emerald-300' : v < -0.05 ? 'text-rose-300' : '';
+  typeof v !== 'number' ? '' : v > 0.05 ? 'text-gain' : v < -0.05 ? 'text-loss' : '';
 const money = (v: unknown) => (typeof v === 'number' ? `$${Math.round(v).toLocaleString()}` : '—');
 const signedMoney = (v: unknown) =>
   typeof v === 'number' ? `${v >= 0 ? '+$' : '−$'}${Math.abs(v).toLocaleString()}` : '—';
 const clamp = (v: number) => Math.max(0, Math.min(100, v));
 const heatBar = (h: number, cap: number) => {
   const r = cap ? h / cap : 0;
-  return r >= 0.9 ? 'bg-rose-400/80' : r >= 0.6 ? 'bg-amber-400/80' : 'bg-emerald-400/70';
+  return r >= 0.9 ? 'bg-loss/80' : r >= 0.6 ? 'bg-warning/80' : 'bg-gain/70';
 };
 const carryTone = (f?: string) =>
   f === 'unwinding'
-    ? 'border-rose-500/30 bg-rose-500/[0.08] text-rose-300'
+    ? 'border-loss/30 bg-loss/[0.08] text-loss'
     : f === 'elevated'
-      ? 'border-amber-500/30 bg-amber-500/[0.08] text-amber-300'
+      ? 'border-warning/30 bg-warning/[0.08] text-warning'
       : f === 'calm'
-        ? 'border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-300'
+        ? 'border-gain/20 bg-gain/[0.06] text-gain'
         : 'border-border bg-bg-elevated/40 text-text-muted';
-const tradesPct = clamp(
-  ((learning.go_live_trades ?? 0) / (learning.go_live_trades_needed ?? 40)) * 100,
-);
 
 // Real vs paper is a safety signal, so it travels on multiple channels: a text
 // pill + a distinct card treatment (never color alone). aria-label spells it out.
@@ -99,14 +127,14 @@ const bookBadge = (b: TraderBook): Badge => {
   if (b.kind === 'broker-paper')
     return {
       label: 'broker paper',
-      pill: 'border border-sky-400/40 bg-sky-500/10 text-sky-200',
+      pill: 'border border-cat-5/40 bg-cat-5/10 text-cat-5',
       card: 'border-border bg-bg-elevated/40',
       aria: 'broker paper book (not real money)',
     };
   if (b.kind === 'control')
     return {
       label: 'no-AI control',
-      pill: 'border border-violet-400/40 bg-violet-500/10 text-violet-200',
+      pill: 'border border-cat-4/40 bg-cat-4/10 text-cat-4',
       card: 'border-border bg-bg-elevated/40',
       aria: 'deterministic no-AI control book',
     };
@@ -118,9 +146,36 @@ const bookBadge = (b: TraderBook): Badge => {
   };
 };
 
-// Decision-test scoreboard tone: green when the AI is ahead of the code.
 const verdictTone = (v?: string) =>
-  v === 'AI ahead' ? 'text-emerald-300' : v === 'code ahead' ? 'text-rose-300' : 'text-text-muted';
+  v === 'AI ahead' ? 'text-gain' : v === 'code ahead' ? 'text-loss' : 'text-text-muted';
+
+// ── Go-live gate ────────────────────────────────────────────────────────────
+// The gate has two independent conditions and the page used to render a trades
+// progress bar that reached 100% while the gate stayed shut, because DSR was
+// the real blocker and sat in body text at the same weight as everything else.
+// Model both conditions explicitly and lead with whatever is actually blocking.
+const tradesDone = learning.go_live_trades ?? 0;
+const tradesNeeded = learning.go_live_trades_needed ?? 40;
+const conditions = [
+  {
+    id: 'dsr',
+    label: 'DSR',
+    met: !!learning.dsr_significant,
+    value: typeof learning.dsr === 'number' ? learning.dsr.toFixed(2) : '—',
+    target: '> 0.95',
+  },
+  {
+    id: 'trades',
+    label: 'Closed trades',
+    met: tradesDone >= tradesNeeded,
+    value: String(tradesDone),
+    target: `≥ ${tradesNeeded}`,
+  },
+];
+const blockers = conditions.filter((c) => !c.met);
+const gateReady = !!learning.go_live_ready && blockers.length === 0;
+
+const macroHigh = macroEvents.filter((e) => e.impact === 'HIGH');
 ---
 
 <AdminShell title="AI Trader">
@@ -128,7 +183,7 @@ const verdictTone = (v?: string) =>
     updated && (
       <span
         slot="meta"
-        class={'hidden text-xs sm:inline ' + (stale ? 'text-amber-300' : 'text-text-subtle')}
+        class={'hidden text-xs sm:inline ' + (stale ? 'text-warning' : 'text-text-subtle')}
         title={updatedDate ? updatedDate.toISOString() : undefined}
       >
         {stale ? '⚠ stale · ' : ''}updated {updated}
@@ -139,9 +194,9 @@ const verdictTone = (v?: string) =>
   {
     !snap ? (
       result.status === 'error' ? (
-        <div class="mt-8 rounded-xl border border-rose-500/30 bg-rose-500/[0.06] px-4 py-3.5 text-sm text-rose-200">
+        <div class="mt-8 rounded-xl border border-loss/30 bg-loss/[0.06] px-4 py-3.5 text-sm text-loss">
           <p class="font-medium">Couldn’t load the snapshot.</p>
-          <p class="mt-1 text-rose-200/80">
+          <p class="mt-1 opacity-80">
             The database read or JSON parse failed — this is an error, not an empty feed. Check the
             Turso connection and the publisher’s last write.
           </p>
@@ -164,24 +219,27 @@ const verdictTone = (v?: string) =>
       )
     ) : (
       <>
-        {stale && (
-          <div class="mb-3 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-2 text-xs text-amber-200">
-            <span aria-hidden="true">⚠</span>
-            <span>
-              Data is stale — last published {updated}. The publisher runs every 15 min, so this
-              feed may be behind.
-            </span>
+        {(stale || degraded.length > 0) && (
+          <div class="mb-4 space-y-2">
+            {stale && (
+              <div class="flex items-center gap-2 rounded-xl border border-warning/30 bg-warning/[0.06] px-4 py-2 text-xs text-warning">
+                <span aria-hidden="true">⚠</span>
+                <span>
+                  Data is stale — last published {updated}. The publisher runs every 15 min, so this
+                  feed may be behind.
+                </span>
+              </div>
+            )}
+            {degraded.length > 0 && (
+              <div class="rounded-xl border border-warning/30 bg-warning/[0.06] px-4 py-2.5 text-xs text-warning">
+                ⚠ {degraded.length} section(s) degraded this snapshot:{' '}
+                {degraded.map((d) => d.split(':')[0]).join(', ')}
+              </div>
+            )}
           </div>
         )}
 
-        {degraded.length > 0 && (
-          <div class="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-2.5 text-xs text-amber-200">
-            ⚠ {degraded.length} section(s) degraded this snapshot:{' '}
-            {degraded.map((d) => d.split(':')[0]).join(', ')}
-          </div>
-        )}
-
-        {/* Risk ribbon: regime · carry · monitor */}
+        {/* ── Status ribbon ───────────────────────────────────────────────── */}
         <section class="flex flex-wrap items-center gap-2 text-xs" aria-label="Risk status">
           {regime.label && (
             <span class="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg-elevated/40 px-3 py-1 text-text-muted">
@@ -193,12 +251,12 @@ const verdictTone = (v?: string) =>
           )}
           {typeof regime.vix === 'number' && (
             <span class="inline-flex rounded-full border border-border bg-bg-elevated/40 px-3 py-1 text-text-muted">
-              VIX <b class="ml-1 tabular-nums text-text">{regime.vix}</b>
+              VIX <b class="ml-1 text-text tabular-nums">{regime.vix}</b>
             </span>
           )}
           {typeof regime.breadth_pct === 'number' && (
             <span class="inline-flex rounded-full border border-border bg-bg-elevated/40 px-3 py-1 text-text-muted">
-              breadth <b class="ml-1 tabular-nums text-text">{regime.breadth_pct}%</b>
+              breadth <b class="ml-1 text-text tabular-nums">{regime.breadth_pct}%</b>
             </span>
           )}
           {carry.flag && carry.flag !== 'unknown' && (
@@ -210,7 +268,7 @@ const verdictTone = (v?: string) =>
             >
               yen carry <b>{carry.flag}</b>
               {typeof carry.levels?.USDJPY === 'number' && (
-                <span class="text-text-subtle">· USDJPY {carry.levels.USDJPY}</span>
+                <span class="opacity-75">· USDJPY {carry.levels.USDJPY}</span>
               )}
             </span>
           )}
@@ -218,388 +276,152 @@ const verdictTone = (v?: string) =>
             class={
               'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 ' +
               (monitor.alive
-                ? 'border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-300'
-                : 'border-rose-500/20 bg-rose-500/[0.06] text-rose-300')
+                ? 'border-gain/20 bg-gain/[0.06] text-gain'
+                : 'border-loss/20 bg-loss/[0.06] text-loss')
             }
           >
             monitor {monitor.alive ? 'live' : 'down'}
             {typeof monitor.alerts_24h === 'number' && monitor.alerts_24h > 0 && (
-              <span class="text-text-subtle">· {monitor.alerts_24h} alerts/24h</span>
+              <span class="opacity-75">· {monitor.alerts_24h} alerts/24h</span>
             )}
           </span>
+          {macroHigh.length > 0 && (
+            <span class="inline-flex items-center gap-1.5 rounded-full border border-warning/30 bg-warning/[0.05] px-3 py-1 text-warning">
+              {macroHigh.length} high-impact event{macroHigh.length > 1 ? 's' : ''} in 10d
+            </span>
+          )}
         </section>
 
-        {/* Decision-test hero: the headline AI-vs-code experiment. */}
-        {decision &&
-          (typeof decision.ai_ret_pct === 'number' ||
-            typeof decision.systematic_ret_pct === 'number') && (
-            <section
-              class="mt-4 rounded-2xl border border-border-strong bg-bg-elevated/60 p-5"
-              aria-label="Decision test: AI versus deterministic control"
-            >
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <h2 class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-                  Decision test · AI vs no-AI control
-                </h2>
-                {decision.verdict && (
-                  <span
-                    class={
-                      'rounded-full border border-current/30 px-2.5 py-0.5 font-mono text-[11px] font-semibold ' +
-                      verdictTone(decision.verdict)
-                    }
-                  >
-                    {decision.verdict}
-                  </span>
-                )}
-              </div>
-
-              <div class="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3">
-                <div>
-                  <div class="font-mono text-[10px] uppercase tracking-wider text-text-subtle">
-                    AI core
-                  </div>
-                  <div
-                    class={'mt-0.5 text-2xl font-medium tabular-nums ' + tone(decision.ai_ret_pct)}
-                  >
-                    {pct(decision.ai_ret_pct)}
-                  </div>
-                </div>
-                <div>
-                  <div class="font-mono text-[10px] uppercase tracking-wider text-text-subtle">
-                    Systematic (no-AI)
-                  </div>
-                  <div
-                    class={
-                      'mt-0.5 text-2xl font-medium tabular-nums ' +
-                      tone(decision.systematic_ret_pct)
-                    }
-                  >
-                    {pct(decision.systematic_ret_pct)}
-                  </div>
-                </div>
-                <div class="col-span-2 sm:col-span-1">
-                  <div class="font-mono text-[10px] uppercase tracking-wider text-text-subtle">
-                    AI edge
-                  </div>
-                  <div
-                    class={
-                      'mt-0.5 text-2xl font-semibold tabular-nums ' + verdictTone(decision.verdict)
-                    }
-                  >
-                    {typeof decision.edge_pts === 'number'
-                      ? `${decision.edge_pts > 0 ? '+' : ''}${decision.edge_pts.toFixed(2)} pts`
-                      : '—'}
-                  </div>
-                </div>
-              </div>
-
-              <p class="mt-3 text-xs leading-relaxed text-text-muted">
-                Same $50k, same universe, same exits — only the AI’s picks differ. A positive edge
-                means the AI is adding value over a deterministic book that just buys everything.
-              </p>
-            </section>
-          )}
-
-        {/* Upcoming macro events (binary risk) */}
-        {macroEvents.length > 0 && (
-          <section class="mt-3 flex flex-wrap items-center gap-2">
-            <span class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-              next 10d
-            </span>
-            {macroEvents.map((e) => (
-              <span
-                class={
-                  'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs ' +
-                  (e.impact === 'HIGH'
-                    ? 'border-amber-500/30 bg-amber-500/[0.05] text-amber-200'
-                    : 'border-border bg-bg-elevated/40 text-text-muted')
-                }
-              >
-                <b class="text-text">{e.country}</b> {e.event}
-                <span class="text-text-subtle">{e.days === 0 ? 'today' : `in ${e.days}d`}</span>
-              </span>
-            ))}
-          </section>
-        )}
-
-        {/* Paper sleeves */}
-        {paperBooks.length > 0 && (
-          <>
-            <h2 class="mb-2.5 mt-5 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-              Paper sleeves · {paperBooks.length}
-            </h2>
-            <section class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {paperBooks.map((b) => {
-                const badge = bookBadge(b);
-                return (
-                  <div class={'rounded-xl border p-4 ' + badge.card}>
-                    <div class="flex items-center justify-between gap-2">
-                      <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-                        {b.name}
-                      </div>
-                      <span
-                        class={
-                          'shrink-0 rounded-full px-2 py-0.5 text-[9px] uppercase ' + badge.pill
-                        }
-                        aria-label={badge.aria}
-                      >
-                        {badge.label}
-                      </span>
-                    </div>
-                    <div class="mt-1 text-2xl font-medium tabular-nums">{money(b.equity)}</div>
-                    <div class="mt-1 flex items-baseline gap-2 text-xs">
-                      <span class={'font-mono tabular-nums ' + tone(b.pnl_pct)}>
-                        {pct(b.pnl_pct)}
-                      </span>
-                      {typeof b.alpha_pct === 'number' && (
-                        <span class="text-text-subtle">α {pct(b.alpha_pct)}</span>
-                      )}
-                      <span class="ml-auto font-mono text-[11px] text-text-subtle tabular-nums">
-                        {b.open_n ?? 0} open · {b.closed_n ?? 0} closed
-                      </span>
-                    </div>
-
-                    {typeof b.deployed_pct === 'number' && (
-                      <div class="mt-3">
-                        <div class="flex items-center justify-between font-mono text-[10px] text-text-subtle">
-                          <span>{b.deployed_pct}% deployed</span>
-                          <span>{money(b.cash)} cash</span>
-                        </div>
-                        <div
-                          class="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]"
-                          role="progressbar"
-                          aria-label="capital deployed"
-                          aria-valuenow={Math.round(clamp(b.deployed_pct))}
-                          aria-valuemin={0}
-                          aria-valuemax={100}
-                        >
-                          <div
-                            class="h-full rounded-full bg-sky-400/70"
-                            style={`width:${clamp(b.deployed_pct)}%`}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-text-subtle">
-                      {typeof b.heat_pct === 'number' && typeof b.heat_cap === 'number' && (
-                        <span class="inline-flex items-center gap-1.5">
-                          <span class="shrink-0">heat</span>
-                          <span
-                            class="inline-block h-1 w-14 overflow-hidden rounded-full bg-white/[0.06] align-middle"
-                            role="progressbar"
-                            aria-label="risk heat vs cap"
-                            aria-valuenow={Math.round(b.heat_pct)}
-                            aria-valuemin={0}
-                            aria-valuemax={Math.round(b.heat_cap)}
-                          >
-                            <span
-                              class={'block h-full rounded-full ' + heatBar(b.heat_pct, b.heat_cap)}
-                              style={`width:${clamp((b.heat_pct / (b.heat_cap || 1)) * 100)}%`}
-                            />
-                          </span>
-                          <span class="shrink-0 tabular-nums">
-                            {b.heat_pct}/{b.heat_cap}%
-                          </span>
-                        </span>
-                      )}
-                      {typeof b.reward_risk === 'number' && b.reward_risk > 0 && (
-                        <span class="tabular-nums">R/R {b.reward_risk.toFixed(2)}</span>
-                      )}
-                      {typeof b.win_rate === 'number' && (
-                        <span class="tabular-nums">{b.win_rate}% win</span>
-                      )}
-                      {typeof b.capture_avg === 'number' && (
-                        <span
-                          class="tabular-nums"
-                          title="exit quality: avg % of peak gain kept on closed winners that got ≥5% ahead"
-                        >
-                          kept {b.capture_avg}% of peaks
-                        </span>
-                      )}
-                      {typeof b.max_dd === 'number' && (
-                        <span class="ml-auto tabular-nums">maxDD {b.max_dd}%</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </section>
-          </>
-        )}
-
-        {/* Control + live rails — set apart from the paper sleeves. */}
-        {capitalBooks.length > 0 && (
-          <>
-            <h2 class="mb-2.5 mt-6 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-              Control &amp; live capital · {capitalBooks.length}
-            </h2>
-            <section class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {capitalBooks.map((b) => {
-                const badge = bookBadge(b);
-                const live = isLiveBook(b);
-                return (
-                  <div class={'rounded-xl border p-4 ' + badge.card}>
-                    <div class="flex items-center justify-between gap-2">
-                      <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-                        {b.name}
-                      </div>
-                      <span
-                        class={
-                          'shrink-0 rounded-full px-2 py-0.5 text-[9px] uppercase ' + badge.pill
-                        }
-                        aria-label={badge.aria}
-                      >
-                        {badge.label}
-                      </span>
-                    </div>
-                    <div class="mt-1 text-2xl font-medium tabular-nums">{money(b.equity)}</div>
-
-                    {live ? (
-                      <>
-                        <div class="mt-1 flex items-baseline gap-2 text-xs">
-                          <span class={'font-mono tabular-nums ' + tone(b.pnl_pct)}>
-                            {pct(b.pnl_pct)}
-                          </span>
-                          <span class="font-mono text-[10px] text-text-subtle">
-                            {b.pnl_basis === 'deployed' ? 'on deployed' : 'account'}
-                          </span>
-                          <span class="ml-auto font-mono text-[11px] text-text-subtle tabular-nums">
-                            {b.open_n ?? 0} open · {b.closed_n ?? 0} closed
-                          </span>
-                        </div>
-                        <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-text-subtle">
-                          {typeof b.current_value === 'number' && (
-                            <span class="tabular-nums">{money(b.current_value)} holdings</span>
-                          )}
-                          {typeof b.account_cash === 'number' && (
-                            <span class="tabular-nums">{money(b.account_cash)} cash</span>
-                          )}
-                          {typeof b.realized_usd === 'number' && (
-                            <span class={'tabular-nums ' + tone(b.realized_usd)}>
-                              {signedMoney(b.realized_usd)} realized
-                            </span>
-                          )}
-                          {typeof b.win_rate === 'number' && (
-                            <span class="ml-auto tabular-nums">{b.win_rate}% win</span>
-                          )}
-                          {typeof b.capture_avg === 'number' && (
-                            <span
-                              class="tabular-nums"
-                              title="exit quality: avg % of peak gain kept on closed winners that got ≥5% ahead"
-                            >
-                              kept {b.capture_avg}% of peaks
-                            </span>
-                          )}
-                        </div>
-                        <div class="mt-1.5 flex flex-wrap items-center gap-x-3 font-mono text-[10px] text-text-subtle">
-                          {typeof b.deployed === 'number' && (
-                            <span class="tabular-nums">{money(b.deployed)} deployed</span>
-                          )}
-                          {typeof b.start === 'number' && (
-                            <span class="tabular-nums">{money(b.start)} funded</span>
-                          )}
-                          {b.account_source && (
-                            <span class="ml-auto">
-                              {b.account_source === 'broker_api'
-                                ? 'live broker feed'
-                                : 'session-recorded'}
-                            </span>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div class="mt-1 flex items-baseline gap-2 text-xs">
-                          <span class={'font-mono tabular-nums ' + tone(b.pnl_pct)}>
-                            {pct(b.pnl_pct)}
-                          </span>
-                          <span class="ml-auto font-mono text-[11px] text-text-subtle tabular-nums">
-                            {b.open_n ?? 0} open · {b.closed_n ?? 0} closed
-                          </span>
-                        </div>
-                        <p class="mt-2 font-mono text-[10px] leading-relaxed text-text-subtle">
-                          Deterministic benchmark: buys the same universe on the same rules, no AI.
-                        </p>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </section>
-          </>
-        )}
-
-        {/* Learning / go-live gate */}
-        {Object.keys(learning).length > 0 && (
-          <section class="mt-4 rounded-xl border border-border bg-bg-elevated/40 p-4">
-            <div class="flex items-center justify-between">
-              <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-                Learning · go-live gate
-              </div>
-              <span
-                class={
-                  'rounded-full px-2 py-0.5 font-mono text-[10px] ring-1 ring-inset ' +
-                  (learning.go_live_ready
-                    ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/20'
-                    : 'bg-bg-elevated text-text-subtle ring-border')
-                }
-              >
-                {learning.go_live_ready ? 'READY' : 'not yet'}
-              </span>
-            </div>
-
-            {/* trades progress */}
-            <div class="mt-3">
-              <div class="flex items-center justify-between font-mono text-[11px] text-text-muted tabular-nums">
-                <span>
-                  {learning.go_live_trades ?? 0}/{learning.go_live_trades_needed ?? 40} closed
-                  trades
-                </span>
-                <span class="text-text-subtle">{Math.round(tradesPct)}%</span>
-              </div>
-              <div
-                class="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]"
-                role="progressbar"
-                aria-label="closed trades toward go-live gate"
-                aria-valuenow={Math.round(tradesPct)}
-                aria-valuemin={0}
-                aria-valuemax={100}
-              >
-                <div class="h-full rounded-full bg-sky-400/70" style={`width:${tradesPct}%`} />
-              </div>
-            </div>
-
-            <div class="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-4">
-              <div class="flex justify-between gap-3">
-                <span class="text-text-muted">DSR</span>
+        {/* ── Deck: the headline answer + the shared-scale equity chart ────── */}
+        <section class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+          <div class="rounded-2xl border border-border-strong bg-bg-elevated/60 p-5">
+            <div class="flex items-center justify-between gap-2">
+              <h2 class="font-mono text-xs uppercase tracking-wider text-text-subtle">
+                Decision test
+              </h2>
+              {decision?.verdict && (
                 <span
                   class={
-                    'font-mono tabular-nums ' +
-                    (learning.dsr_significant ? 'text-emerald-300' : 'text-text')
+                    'rounded-full border border-current/30 px-2.5 py-0.5 font-mono text-[11px] font-semibold ' +
+                    verdictTone(decision.verdict)
                   }
                 >
-                  {typeof learning.dsr === 'number' ? learning.dsr.toFixed(2) : '—'}
-                  <span class="text-text-subtle"> / 0.95</span>
+                  {decision.verdict}
                 </span>
+              )}
+            </div>
+
+            {/* Hero figure: proportional digits, not tabular. Equal-width digits
+                make a large standalone number read loose and mis-kerned. */}
+            <div class={'mt-3 text-5xl font-medium ' + verdictTone(decision?.verdict)}>
+              {typeof decision?.edge_pts === 'number'
+                ? `${decision.edge_pts > 0 ? '+' : ''}${decision.edge_pts.toFixed(2)}`
+                : '—'}
+              <span class="ml-1 text-xl text-text-subtle">pts</span>
+            </div>
+            <p class="mt-0.5 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+              AI edge over the no-AI control
+            </p>
+
+            <dl class="mt-4 space-y-1.5 border-t border-border pt-3 text-sm">
+              <div class="flex items-baseline justify-between gap-3">
+                <dt class="text-text-muted">AI core</dt>
+                <dd class={'font-mono tabular-nums ' + tone(decision?.ai_ret_pct)}>
+                  {pct(decision?.ai_ret_pct)}
+                </dd>
               </div>
+              <div class="flex items-baseline justify-between gap-3">
+                <dt class="text-text-muted">Systematic (no-AI)</dt>
+                <dd class={'font-mono tabular-nums ' + tone(decision?.systematic_ret_pct)}>
+                  {pct(decision?.systematic_ret_pct)}
+                </dd>
+              </div>
+            </dl>
+
+            <p class="mt-3 text-xs leading-relaxed text-text-muted">
+              Same $50k, same universe, same exits. Only the AI’s picks differ, so a positive edge
+              means the AI is adding value over a book that just buys everything.
+            </p>
+          </div>
+
+          <EquityDeck client:load equityCurve={equityCurve} />
+        </section>
+
+        {/* ── Go-live gate ────────────────────────────────────────────────── */}
+        {Object.keys(learning).length > 0 && (
+          <section class="mt-4 rounded-xl border border-border bg-bg-elevated/40 p-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <h2 class="font-mono text-xs uppercase tracking-wider text-text-subtle">
+                Go-live gate
+              </h2>
+              <span
+                class={
+                  'rounded-full px-2.5 py-0.5 font-mono text-[11px] ring-1 ring-inset ' +
+                  (gateReady
+                    ? 'bg-gain/10 text-gain ring-gain/25'
+                    : 'bg-warning/10 text-warning ring-warning/25')
+                }
+              >
+                {gateReady
+                  ? 'READY'
+                  : `blocked by ${blockers.length} condition${blockers.length === 1 ? '' : 's'}`}
+              </span>
+            </div>
+
+            {/* Every condition, blocking ones first and visually dominant. A
+                single progress bar hid the fact that the gate can sit at 100%
+                on trades while DSR keeps it shut. */}
+            <ul class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {[...blockers, ...conditions.filter((c) => c.met)].map((c) => (
+                <li
+                  class={
+                    'flex items-center justify-between gap-3 rounded-lg border px-3 py-2 ' +
+                    (c.met
+                      ? 'border-border bg-white/[0.02]'
+                      : 'border-warning/30 bg-warning/[0.06]')
+                  }
+                >
+                  <span class="inline-flex items-center gap-2">
+                    <span
+                      class={'font-mono text-xs ' + (c.met ? 'text-gain' : 'text-warning')}
+                      aria-hidden="true"
+                    >
+                      {c.met ? '✓' : '●'}
+                    </span>
+                    <span
+                      class={c.met ? 'text-sm text-text-muted' : 'text-sm font-medium text-text'}
+                    >
+                      {c.label}
+                      <span class="sr-only">{c.met ? ' met' : ' blocking'}</span>
+                    </span>
+                  </span>
+                  <span class="font-mono text-sm tabular-nums">
+                    <b class={c.met ? 'text-text-muted' : 'text-warning'}>{c.value}</b>
+                    <span class="text-text-subtle"> / {c.target}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            {/* No overall progress bar here on purpose. The old one filled to
+                100% off the trades count alone while the gate stayed shut on
+                DSR, which read as "done" when it wasn't. The condition list
+                above is the honest version. */}
+
+            <div class="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 border-t border-border pt-3 text-sm sm:grid-cols-3">
               <div class="flex justify-between gap-3">
                 <span class="text-text-muted">Sharpe</span>
-                <span class="font-mono tabular-nums text-text">
+                <span class="font-mono text-text tabular-nums">
                   {typeof learning.sharpe === 'number' ? learning.sharpe.toFixed(2) : '—'}
                 </span>
               </div>
               <div class="flex justify-between gap-3">
                 <span class="text-text-muted">Stock ML</span>
-                <span class="font-mono text-[12px] text-text">
-                  {learning.ml_stock_status ?? '—'}
-                </span>
+                <span class="font-mono text-xs text-text">{learning.ml_stock_status ?? '—'}</span>
               </div>
               <div class="flex justify-between gap-3">
                 <span class="text-text-muted">Crypto ML</span>
-                <span class="font-mono text-[12px] text-text">
-                  {learning.ml_crypto_status ?? '—'}
-                </span>
+                <span class="font-mono text-xs text-text">{learning.ml_crypto_status ?? '—'}</span>
               </div>
             </div>
             {learning.go_live_gate && (
@@ -608,37 +430,290 @@ const verdictTone = (v?: string) =>
           </section>
         )}
 
-        {/* Equity charts + tables (interactive island) */}
-        <TraderTables
-          client:load
-          positions={snap.positions ?? []}
-          closed={snap.closed ?? []}
-          equityCurve={snap.equity_curve ?? {}}
-        />
+        {/* ── Detail views ────────────────────────────────────────────────── */}
+        <DeckTabs
+          tabs={[
+            { id: 'books', label: 'Books', count: books.length },
+            { id: 'positions', label: 'Positions', count: positions.length },
+            { id: 'closed', label: 'Closed', count: closed.length },
+            { id: 'lessons', label: 'Lessons', count: reflections.length },
+            { id: 'macro', label: 'Macro', count: macroEvents.length },
+          ]}
+        >
+          <Fragment slot="books">
+            {paperBooks.length > 0 && (
+              <>
+                <h3 class="mb-2.5 font-mono text-xs uppercase tracking-wider text-text-subtle">
+                  Paper sleeves · {paperBooks.length}
+                </h3>
+                <section class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {paperBooks.map((b) => {
+                    const badge = bookBadge(b);
+                    return (
+                      <div class={'rounded-xl border p-4 ' + badge.card}>
+                        <div class="flex items-center justify-between gap-2">
+                          <div class="font-mono text-xs uppercase tracking-wider text-text-subtle">
+                            {b.name}
+                          </div>
+                          <span
+                            class={
+                              'shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase ' +
+                              badge.pill
+                            }
+                            aria-label={badge.aria}
+                          >
+                            {badge.label}
+                          </span>
+                        </div>
+                        <div class="mt-1 text-2xl font-medium">{money(b.equity)}</div>
+                        <div class="mt-1 flex items-baseline gap-2 text-xs">
+                          <span class={'font-mono tabular-nums ' + tone(b.pnl_pct)}>
+                            {pct(b.pnl_pct)}
+                          </span>
+                          {typeof b.alpha_pct === 'number' && (
+                            <span class="text-text-subtle">α {pct(b.alpha_pct)}</span>
+                          )}
+                          <span class="ml-auto font-mono text-[11px] text-text-subtle tabular-nums">
+                            {b.open_n ?? 0} open · {b.closed_n ?? 0} closed
+                          </span>
+                        </div>
 
-        {/* Reflections */}
-        {reflections.length > 0 && (
-          <>
-            <h2 class="mb-2.5 mt-9 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-              Recent lessons · {reflections.length}
-            </h2>
-            <ul class="space-y-1.5 text-sm">
-              {reflections.map((r) => (
-                <li class="rounded-lg border border-border bg-bg-elevated/40 px-4 py-2.5">
-                  <div class="flex items-baseline justify-between gap-3">
-                    <span class="font-medium">
-                      {r.symbol} <span class="text-text-subtle">· {r.verdict}</span>
+                        {typeof b.deployed_pct === 'number' && (
+                          <div class="mt-3">
+                            <div class="flex items-center justify-between font-mono text-[11px] text-text-subtle">
+                              <span>{b.deployed_pct}% deployed</span>
+                              <span>{money(b.cash)} cash</span>
+                            </div>
+                            <div
+                              class="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]"
+                              role="progressbar"
+                              aria-label="capital deployed"
+                              aria-valuenow={Math.round(clamp(b.deployed_pct))}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                            >
+                              <div
+                                class="h-full rounded-full bg-cat-5/80"
+                                style={`width:${clamp(b.deployed_pct)}%`}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-text-subtle">
+                          {typeof b.heat_pct === 'number' && typeof b.heat_cap === 'number' && (
+                            <span class="inline-flex items-center gap-1.5">
+                              <span class="shrink-0">heat</span>
+                              <span
+                                class="inline-block h-1 w-14 overflow-hidden rounded-full bg-white/[0.06] align-middle"
+                                role="progressbar"
+                                aria-label="risk heat vs cap"
+                                aria-valuenow={Math.round(b.heat_pct)}
+                                aria-valuemin={0}
+                                aria-valuemax={Math.round(b.heat_cap)}
+                              >
+                                <span
+                                  class={
+                                    'block h-full rounded-full ' + heatBar(b.heat_pct, b.heat_cap)
+                                  }
+                                  style={`width:${clamp((b.heat_pct / (b.heat_cap || 1)) * 100)}%`}
+                                />
+                              </span>
+                              <span class="shrink-0 tabular-nums">
+                                {b.heat_pct}/{b.heat_cap}%
+                              </span>
+                            </span>
+                          )}
+                          {typeof b.reward_risk === 'number' && b.reward_risk > 0 && (
+                            <span class="tabular-nums">R/R {b.reward_risk.toFixed(2)}</span>
+                          )}
+                          {typeof b.win_rate === 'number' && (
+                            <span class="tabular-nums">{b.win_rate}% win</span>
+                          )}
+                          {typeof b.capture_avg === 'number' && (
+                            <span class="tabular-nums">kept {b.capture_avg}% of peaks</span>
+                          )}
+                          {typeof b.max_dd === 'number' && (
+                            <span class="ml-auto tabular-nums">maxDD {b.max_dd}%</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </section>
+              </>
+            )}
+
+            {capitalBooks.length > 0 && (
+              <>
+                <h3 class="mb-2.5 mt-6 font-mono text-xs uppercase tracking-wider text-text-subtle">
+                  Control &amp; live capital · {capitalBooks.length}
+                </h3>
+                <section class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {capitalBooks.map((b) => {
+                    const badge = bookBadge(b);
+                    const live = isLiveBook(b);
+                    return (
+                      <div class={'rounded-xl border p-4 ' + badge.card}>
+                        <div class="flex items-center justify-between gap-2">
+                          <div class="font-mono text-xs uppercase tracking-wider text-text-subtle">
+                            {b.name}
+                          </div>
+                          <span
+                            class={
+                              'shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase ' +
+                              badge.pill
+                            }
+                            aria-label={badge.aria}
+                          >
+                            {badge.label}
+                          </span>
+                        </div>
+                        <div class="mt-1 text-2xl font-medium">{money(b.equity)}</div>
+
+                        {live ? (
+                          <>
+                            <div class="mt-1 flex items-baseline gap-2 text-xs">
+                              <span class={'font-mono tabular-nums ' + tone(b.pnl_pct)}>
+                                {pct(b.pnl_pct)}
+                              </span>
+                              <span class="font-mono text-[11px] text-text-subtle">
+                                {b.pnl_basis === 'deployed' ? 'on deployed' : 'account'}
+                              </span>
+                              <span class="ml-auto font-mono text-[11px] text-text-subtle tabular-nums">
+                                {b.open_n ?? 0} open · {b.closed_n ?? 0} closed
+                              </span>
+                            </div>
+                            <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-text-subtle">
+                              {typeof b.current_value === 'number' && (
+                                <span class="tabular-nums">{money(b.current_value)} holdings</span>
+                              )}
+                              {typeof b.account_cash === 'number' && (
+                                <span class="tabular-nums">{money(b.account_cash)} cash</span>
+                              )}
+                              {typeof b.realized_usd === 'number' && (
+                                <span class={'tabular-nums ' + tone(b.realized_usd)}>
+                                  {signedMoney(b.realized_usd)} realized
+                                </span>
+                              )}
+                              {typeof b.win_rate === 'number' && (
+                                <span class="ml-auto tabular-nums">{b.win_rate}% win</span>
+                              )}
+                              {typeof b.capture_avg === 'number' && (
+                                <span class="tabular-nums">kept {b.capture_avg}% of peaks</span>
+                              )}
+                            </div>
+                            <div class="mt-1.5 flex flex-wrap items-center gap-x-3 font-mono text-[11px] text-text-subtle">
+                              {typeof b.deployed === 'number' && (
+                                <span class="tabular-nums">{money(b.deployed)} deployed</span>
+                              )}
+                              {typeof b.start === 'number' && (
+                                <span class="tabular-nums">{money(b.start)} funded</span>
+                              )}
+                              {b.account_source && (
+                                <span class="ml-auto">
+                                  {b.account_source === 'broker_api'
+                                    ? 'live broker feed'
+                                    : 'session-recorded'}
+                                </span>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div class="mt-1 flex items-baseline gap-2 text-xs">
+                              <span class={'font-mono tabular-nums ' + tone(b.pnl_pct)}>
+                                {pct(b.pnl_pct)}
+                              </span>
+                              <span class="ml-auto font-mono text-[11px] text-text-subtle tabular-nums">
+                                {b.open_n ?? 0} open · {b.closed_n ?? 0} closed
+                              </span>
+                            </div>
+                            <p class="mt-2 font-mono text-[11px] leading-relaxed text-text-subtle">
+                              Deterministic benchmark: buys the same universe on the same rules, no
+                              AI.
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </section>
+              </>
+            )}
+
+            <h3 class="mb-2.5 mt-6 font-mono text-xs uppercase tracking-wider text-text-subtle">
+              Per-book curves · shared scale, vs benchmark
+            </h3>
+            {/* No client directive on purpose. These small multiples have no
+                state and no handlers, so server-rendered SVG is the finished
+                article — this ships zero JS and skips serializing the curve a
+                second time into the page. */}
+            <BookCurves equityCurve={equityCurve} />
+          </Fragment>
+
+          {/* client:idle, NOT client:visible. An inactive panel is `hidden`, so
+              its children have no boxes and Astro's IntersectionObserver never
+              fires — the island would sit as dead server HTML and the table
+              would silently lose sorting, filtering and row expansion. idle
+              still keeps hydration off the critical path but guarantees it. */}
+          <Fragment slot="positions">
+            <PositionsTable client:idle positions={positions} />
+          </Fragment>
+
+          <Fragment slot="closed">
+            <ClosedTable client:idle closed={closed} />
+          </Fragment>
+
+          <Fragment slot="lessons">
+            {reflections.length === 0 ? (
+              <p class="text-sm text-text-muted">No lessons recorded yet.</p>
+            ) : (
+              <ul class="space-y-1.5 text-sm">
+                {reflections.map((r) => (
+                  <li class="rounded-lg border border-border bg-bg-elevated/40 px-4 py-2.5">
+                    <div class="flex items-baseline justify-between gap-3">
+                      <span class="font-medium">
+                        {r.symbol} <span class="text-text-subtle">· {r.verdict}</span>
+                      </span>
+                      <span class={'shrink-0 font-mono text-xs tabular-nums ' + tone(r.return_pct)}>
+                        {pct(r.return_pct)}
+                      </span>
+                    </div>
+                    <p class="mt-1 text-text-muted">{r.lesson}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Fragment>
+
+          <Fragment slot="macro">
+            {macroEvents.length === 0 ? (
+              <p class="text-sm text-text-muted">No macro events in the next 10 days.</p>
+            ) : (
+              <ul class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {macroEvents.map((e) => (
+                  <li
+                    class={
+                      'flex items-baseline justify-between gap-3 rounded-lg border px-3 py-2 text-sm ' +
+                      (e.impact === 'HIGH'
+                        ? 'border-warning/30 bg-warning/[0.05] text-warning'
+                        : 'border-border bg-bg-elevated/40 text-text-muted')
+                    }
+                  >
+                    <span class="min-w-0">
+                      <b class="text-text">{e.country}</b> {e.event}
+                      {e.impact === 'HIGH' && <span class="sr-only"> (high impact)</span>}
                     </span>
-                    <span class={'shrink-0 font-mono text-xs tabular-nums ' + tone(r.return_pct)}>
-                      {pct(r.return_pct)}
+                    <span class="shrink-0 font-mono text-xs text-text-subtle tabular-nums">
+                      {e.days === 0 ? 'today' : `${e.days}d`}
                     </span>
-                  </div>
-                  <p class="mt-1 text-text-muted">{r.lesson}</p>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Fragment>
+        </DeckTabs>
       </>
     )
   }

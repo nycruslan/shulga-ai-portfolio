@@ -35,6 +35,28 @@
   --color-danger: #f07878;
   --color-danger-dim: #8f4040; /* decorative borders/washes only */
 
+  /* P&L polarity. Reserved: these mean gain/loss and are never reused as a
+     categorical series color. Both clear AA on bg (9.5:1 and 7.3:1). Gain is
+     deliberately NOT the phosphor accent — accent means "UI is alive", not
+     "this number went up", and the two must not be confusable. */
+  --color-gain: #4ec98a;
+  --color-loss: #f07878;
+
+  /* Chart categorical ramp — identity only, never magnitude or polarity.
+     Generated at OKLCH L=0.62 C=0.15 and verified against the #0e1011 chart
+     surface with the dataviz validator: lightness band, chroma floor, CVD
+     separation, normal-vision floor and contrast all pass.
+     Slot ORDER is load-bearing. This sequence holds the worst adjacent pair
+     at deutan ΔE 17.1; the naive hue-wheel order drops it to 8.5.
+     Six slots is the whole budget. Color encodes strategy family; asset class
+     (stk/crp) rides the text label, so nine books never need nine hues. */
+  --color-cat-1: #00a0a3;
+  --color-cat-2: #c07100;
+  --color-cat-3: #9b6bce;
+  --color-cat-4: #259f56;
+  --color-cat-5: #278bdb;
+  --color-cat-6: #d15c56;
+
   /* Two easing personalities. expo for expressive reveals; standard (M3) for
      interactive state changes — hovers, presses, focus. */
   --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
@@ -42,6 +64,9 @@
 }
 
 html {
+  /* Tells the UA this is a dark document, so native scrollbars, form controls
+     and the <select> dropdown render dark instead of light-on-dark. */
+  color-scheme: dark;
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
@@ -653,4 +678,101 @@ body::before {
   .deck-alert-pulse {
     animation: none !important;
   }
+}
+
+/* ── Definition tooltips (native popover) ───────────────────────────────────
+   Replaces title="" on the admin consoles. A title tooltip can't be reached by
+   keyboard, never appears on touch, and is announced inconsistently, so any
+   definition living in one is effectively invisible to some readers.
+   Native popover is Baseline and needs no JS. Anchor positioning is newer, so
+   it's applied only where supported; without it the popover falls back to the
+   browser's centered top-layer placement, which is still perfectly usable. */
+.tip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text-subtle);
+  font-size: 0.6rem;
+  line-height: 1;
+  font-family: var(--font-mono);
+  transition:
+    color 0.15s var(--ease-standard),
+    border-color 0.15s var(--ease-standard);
+}
+.tip-btn:hover,
+.tip-btn:focus-visible {
+  color: var(--color-text);
+  border-color: var(--color-text-subtle);
+}
+
+.tip-wrap {
+  display: inline;
+}
+
+.tip-pop {
+  max-width: 17rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.6rem;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  /* A popover stays a DOM descendant of its trigger even while painting in the
+     top layer, so it inherits whatever the trigger sits inside. Table headers
+     are uppercase mono with wide tracking — reset to prose or the definition
+     renders as shouted monospace. */
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.5;
+  text-transform: none;
+  letter-spacing: normal;
+  text-align: left;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+  /* Long definitions read better without ragged last lines. */
+  text-wrap: pretty;
+}
+.tip-pop::backdrop {
+  background: transparent;
+}
+
+@supports (anchor-name: --a) {
+  /* --tip-anchor is set per instance on .tip-wrap, so each button gets a unique
+     anchor name and each popover binds to its own trigger. */
+  .tip-btn {
+    anchor-name: var(--tip-anchor);
+  }
+  .tip-pop {
+    position: absolute;
+    position-anchor: var(--tip-anchor);
+    margin: 0;
+    top: anchor(bottom);
+    left: anchor(left);
+    translate: 0 0.4rem;
+    /* Flip rather than overflow when the column is near a viewport edge. */
+    position-try-fallbacks:
+      flip-block,
+      flip-inline,
+      flip-block flip-inline;
+  }
+}
+
+/* Long data tables (73 open positions, 60 closed trades) defer the rendering
+   work for rows outside the scroll port. contain-intrinsic-size is mandatory
+   alongside content-visibility — without it each off-screen row collapses to
+   0px and the scrollbar jumps as you scroll. `auto` lets the browser remember
+   each row's real height once it has been measured. */
+.deferred-rows tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: auto none auto 2.6rem;
+}
+
+/* An expanded row hosts the lifecycle chart and is far taller than a data row;
+   skipping its own containment keeps the chart from being clipped or mis-sized. */
+.deferred-rows tbody tr:has(> td[colspan]) {
+  content-visibility: visible;
+  contain-intrinsic-size: none;
 }

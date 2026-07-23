@@ -54,39 +54,45 @@ type Closed = {
   capture_pct?: number | null;
   events?: TradeEvent[] | null;
 };
-type EquityPoint = {
-  t?: string;
-  equity?: number | null;
-  ret_pct?: number | null;
-  bench_pct?: number | null;
-};
-
 type Align = 'left' | 'right';
-type Meta = { align?: Align; className?: string };
+// `help` puts a column's definition in its header, where it belongs — stated
+// once, instead of repeated as an icon on every one of 73 rows.
+type Meta = { align?: Align; className?: string; help?: React.ReactNode; helpLabel?: string };
 
+// P&L polarity uses the reserved gain/loss tokens, never a categorical hue.
 const pnlTone = (n?: number | null) =>
   n == null
     ? 'text-text-muted'
     : n > 0.05
-      ? 'text-emerald-300'
+      ? 'text-gain'
       : n < -0.05
-        ? 'text-rose-300'
+        ? 'text-loss'
         : 'text-text-muted';
 
-const verdict = (n?: number | null) => (n == null ? '⚪' : n > 0.05 ? '🟢' : n < -2 ? '🔴' : '🟡');
+// Direction as a text glyph rather than an emoji. Emoji render differently on
+// every platform and announce as their CLDR name ("large green circle"), which
+// tells a screen-reader user nothing about the trade.
+// Thresholds deliberately match pnlTone: the glyph is the non-color channel for
+// exactly the same fact, so a row can never show a red number beside a "flat"
+// mark. The old emoji used a different cutoff and did precisely that.
+const dirMark = (n?: number | null) => (n == null ? '·' : n > 0.05 ? '▲' : n < -0.05 ? '▼' : '–');
+const dirLabel = (n?: number | null) =>
+  n == null ? 'no data' : n > 0.05 ? 'up' : n < -0.05 ? 'down' : 'flat';
 
-// Categorical sleeve colors. Real money gets an amber ring + bold — a channel
-// that survives colorblindness and any background (paired with the "REAL $" text
-// tag on the row, never color alone).
+// Color encodes STRATEGY FAMILY, not the individual book — five families fit
+// the six validated categorical slots, where nine books would not. Asset class
+// (stk/crp) rides the label text, which is already in the badge.
+// Real money is the exception: it keeps the amber ring + bold, a deliberate
+// safety signal paired with the "REAL $" text tag so it never relies on color.
 const bookBadge = (b?: string, isReal?: boolean) => {
   const name = (b ?? '').toLowerCase();
   if (isReal || name.includes('robinhood'))
     return 'bg-amber-400/15 text-amber-200 ring-amber-400/60 font-semibold';
-  if (name.includes('alpaca')) return 'bg-cyan-500/10 text-cyan-300 ring-cyan-500/20';
-  if (name.includes('systematic')) return 'bg-violet-500/10 text-violet-300 ring-violet-500/20';
-  if (name.includes('aggressive')) return 'bg-fuchsia-500/10 text-fuchsia-300 ring-fuchsia-500/20';
-  if (name.includes('mild')) return 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/20';
-  return 'bg-sky-500/10 text-sky-300 ring-sky-500/20';
+  if (name.includes('alpaca')) return 'bg-cat-5/12 text-cat-5 ring-cat-5/30';
+  if (name.includes('systematic')) return 'bg-cat-4/12 text-cat-4 ring-cat-4/30';
+  if (name.includes('aggressive')) return 'bg-cat-3/12 text-cat-3 ring-cat-3/30';
+  if (name.includes('mild')) return 'bg-cat-2/12 text-cat-2 ring-cat-2/30';
+  return 'bg-cat-1/12 text-cat-1 ring-cat-1/30';
 };
 
 const fmtUsd = (n?: number | null) =>
@@ -101,13 +107,43 @@ const fmtPrice = (n?: number | null) =>
 // so it's visible regardless of sort/scroll and independent of the book column.
 const RealTag = () => (
   <span
-    className="rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide ring-1 ring-inset ring-amber-400/60 bg-amber-400/15 text-amber-200"
-    aria-label="real money position"
-    title="real money — live broker position"
+    className="rounded bg-amber-400/15 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200 ring-1 ring-inset ring-amber-400/60"
+    aria-label="real money position, live broker"
   >
     REAL $
   </span>
 );
+
+/**
+ * A definition tooltip that keyboard and touch users can actually open.
+ * Uses the native popover API, so there is no JS behind it and no focus trap to
+ * get wrong — the browser handles light-dismiss, Escape and the top layer.
+ */
+export function InfoTip({ label, children }: { label: string; children: React.ReactNode }) {
+  // React 19 emits CSS-safe ids (`_r7R_23d_`), which matters here because the
+  // id is interpolated into a custom property name below. React 18's `:r0:`
+  // form would not have been.
+  const id = useId();
+  // Each pair needs its OWN anchor name. A single shared `anchor-name: --tip`
+  // makes every popover resolve against whichever button the cascade picks, so
+  // tooltips land next to the wrong column. The name is threaded through a
+  // custom property on the wrapper, which both children inherit.
+  return (
+    <span className="tip-wrap" style={{ '--tip-anchor': `--tip-${id}` } as React.CSSProperties}>
+      <button
+        type="button"
+        popoverTarget={id}
+        className="tip-btn ml-1 align-middle"
+        aria-label={label}
+      >
+        <span aria-hidden="true">?</span>
+      </button>
+      <div id={id} popover="auto" role="tooltip" className="tip-pop">
+        {children}
+      </div>
+    </span>
+  );
+}
 
 const alignClass = (a?: Align) => (a === 'right' ? 'text-right' : '');
 
@@ -172,7 +208,10 @@ export function DataTable<T>({
       <div
         className={
           'overflow-x-auto rounded-xl border border-border bg-bg-elevated/40' +
-          (scroll ? ' max-h-[28rem] overflow-y-auto themed-scroll' : '')
+          // `scroll` is set once a table passes 12 rows, which is also where
+          // per-row render cost starts to matter (positions is 73, closed 60).
+          // deferred-rows skips layout/paint for rows outside the scroll port.
+          (scroll ? ' themed-scroll deferred-rows max-h-[28rem] overflow-y-auto' : '')
         }
       >
         <table className="w-full border-collapse text-sm">
@@ -197,7 +236,9 @@ export function DataTable<T>({
                             ? 'descending'
                             : undefined
                       }
-                      className={'px-4 py-2.5 font-medium ' + alignClass(meta?.align)}
+                      className={
+                        'whitespace-nowrap px-4 py-2.5 font-medium ' + alignClass(meta?.align)
+                      }
                     >
                       {header.isPlaceholder ? null : sortable ? (
                         <button
@@ -215,6 +256,13 @@ export function DataTable<T>({
                         </button>
                       ) : (
                         flexRender(header.column.columnDef.header, header.getContext())
+                      )}
+                      {/* Sibling of the sort button, never inside it — a button
+                          nested in a button is invalid and breaks activation. */}
+                      {meta?.help && (
+                        <InfoTip label={meta.helpLabel ?? 'What this column means'}>
+                          {meta.help}
+                        </InfoTip>
                       )}
                     </th>
                   );
@@ -314,7 +362,8 @@ export function DataTable<T>({
 const bookCell = (b?: string, isReal?: boolean) => (
   <span
     className={
-      'inline-flex rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset ' + bookBadge(b, isReal)
+      'inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset ' +
+      bookBadge(b, isReal)
     }
   >
     {(b ?? '—').replace(' stock', ' stk').replace(' crypto', ' crp')}
@@ -325,29 +374,50 @@ const positionColumns: ColumnDef<Position, unknown>[] = [
   {
     accessorKey: 'symbol',
     header: 'Name',
-    meta: { className: 'whitespace-nowrap text-text font-medium' },
+    meta: {
+      className: 'whitespace-nowrap text-text font-medium',
+      helpLabel: 'What the row markers mean',
+      help: (
+        <ul className="space-y-1">
+          <li>
+            <b className="text-text">▲ ▼ –</b> direction of the position, matching the P&amp;L
+            color.
+          </li>
+          <li>
+            <b className="text-amber-200">REAL $</b> a live broker position with real money in it.
+          </li>
+          <li>
+            <b className="text-gain">▲ add</b> up at least 1R with the stop at breakeven, so it can
+            be pyramided.
+          </li>
+          <li>
+            <b className="text-warning">⚠ ER</b> earnings within 7 days. Binary risk the model
+            can&rsquo;t price.
+          </li>
+          <li>Open a row to see its thesis and full lifecycle.</li>
+        </ul>
+      ),
+    },
     cell: ({ row }) => {
       const p = row.original;
       const ed = p.earnings_days;
       return (
-        <span className="inline-flex items-center gap-1.5" title={p.thesis ?? undefined}>
+        <span className="inline-flex items-center gap-1.5">
           <span>
-            {verdict(p.pnl_pct)} {p.symbol}
+            <span className={pnlTone(p.pnl_pct)} aria-hidden="true">
+              {dirMark(p.pnl_pct)}
+            </span>{' '}
+            <span className="sr-only">{dirLabel(p.pnl_pct)}, </span>
+            {p.symbol}
           </span>
           {p.is_real && <RealTag />}
           {p.pyramid_eligible && (
-            <span
-              className="rounded px-1 py-0.5 text-[9px] font-medium ring-1 ring-inset ring-emerald-500/20 bg-emerald-500/10 text-emerald-300"
-              title="up ≥1R with stop at breakeven — eligible to pyramid"
-            >
+            <span className="rounded bg-gain/10 px-1 py-0.5 text-[11px] font-medium text-gain ring-1 ring-inset ring-gain/25">
               ▲ add
             </span>
           )}
           {typeof ed === 'number' && ed >= 0 && ed <= 7 && (
-            <span
-              className="rounded px-1 py-0.5 text-[9px] font-medium ring-1 ring-inset ring-amber-500/20 bg-amber-500/10 text-amber-300"
-              title="earnings within 7 days — binary risk"
-            >
+            <span className="rounded bg-warning/10 px-1 py-0.5 text-[11px] font-medium text-warning ring-1 ring-inset ring-warning/25">
               ⚠ ER {ed}d
             </span>
           )}
@@ -400,22 +470,25 @@ const positionColumns: ColumnDef<Position, unknown>[] = [
   {
     accessorKey: 'peak_pct',
     header: 'Peak',
-    meta: { align: 'right', className: 'whitespace-nowrap font-mono tabular-nums' },
+    meta: {
+      align: 'right',
+      className: 'whitespace-nowrap font-mono tabular-nums',
+      helpLabel: 'What Peak means',
+      help: (
+        <>
+          The best unrealized gain the trade has reached. Amber means it was at least 5% ahead and
+          now sits flat or down, so it&rsquo;s giving the gain back.
+        </>
+      ),
+    },
     cell: ({ row }) => {
       const p = row.original;
       if (p.peak_pct == null) return <span className="text-text-subtle">—</span>;
       // Amber: was ≥+5% ahead but sits at/below flat now — a round-trip in progress.
       const fading = p.peak_pct >= 5 && (p.pnl_pct ?? 0) <= 0;
       return (
-        <span
-          className={fading ? 'text-amber-300' : 'text-text-muted'}
-          title={
-            fading
-              ? 'was ahead ≥5%, now flat or down — giving the gain back'
-              : 'best unrealized gain so far'
-          }
-        >
-          +{p.peak_pct}%
+        <span className={fading ? 'text-warning' : 'text-text-muted'}>
+          +{p.peak_pct}%{fading && <span className="sr-only"> (giving the gain back)</span>}
         </span>
       );
     },
@@ -464,8 +537,14 @@ const positionColumns: ColumnDef<Position, unknown>[] = [
     cell: ({ row }) => {
       const c = row.original.conviction;
       if (!c) return <span className="text-text-subtle">—</span>;
+      // Conviction is an ordered rank, not a P&L outcome, so it steps through
+      // text weight rather than borrowing the gain color.
       const t =
-        c === 'high' ? 'text-emerald-300' : c === 'low' ? 'text-text-subtle' : 'text-text-muted';
+        c === 'high'
+          ? 'text-text font-medium'
+          : c === 'low'
+            ? 'text-text-subtle'
+            : 'text-text-muted';
       return <span className={'text-xs ' + t}>{c}</span>;
     },
   },
@@ -485,7 +564,11 @@ const closedColumns: ColumnDef<Closed, unknown>[] = [
     cell: ({ row }) => (
       <span className="inline-flex items-center gap-1.5">
         <span>
-          {verdict(row.original.return_pct)} {row.original.symbol}
+          <span className={pnlTone(row.original.return_pct)} aria-hidden="true">
+            {dirMark(row.original.return_pct)}
+          </span>{' '}
+          <span className="sr-only">{dirLabel(row.original.return_pct)}, </span>
+          {row.original.symbol}
         </span>
         {row.original.is_real && <RealTag />}
       </span>
@@ -512,34 +595,42 @@ const closedColumns: ColumnDef<Closed, unknown>[] = [
   {
     accessorKey: 'peak_pct',
     header: 'Peak',
-    meta: { align: 'right', className: 'whitespace-nowrap font-mono tabular-nums text-text-muted' },
+    meta: {
+      align: 'right',
+      className: 'whitespace-nowrap font-mono tabular-nums text-text-muted',
+      helpLabel: 'What Peak means',
+      help: (
+        <>
+          The best unrealized gain the trade reached. A dash means no peak was recorded, either a
+          pre-watermark trade or one that never traded above entry.
+        </>
+      ),
+    },
     cell: ({ row }) =>
       row.original.peak_pct == null ? (
-        <span
-          className="text-text-subtle"
-          title="no peak recorded (pre-watermark trade or never above entry)"
-        >
-          —
-        </span>
+        <span className="text-text-subtle">—</span>
       ) : (
-        <span title="best unrealized gain the trade reached">+{row.original.peak_pct}%</span>
+        <span>+{row.original.peak_pct}%</span>
       ),
   },
   {
     accessorKey: 'capture_pct',
     header: 'Kept',
-    meta: { align: 'right', className: 'whitespace-nowrap font-mono tabular-nums' },
+    meta: {
+      align: 'right',
+      className: 'whitespace-nowrap font-mono tabular-nums',
+      helpLabel: 'What Kept measures',
+      help: (
+        <>
+          Exit quality: the share of the peak gain the exit actually kept. Around 100 means it sold
+          near the top. Zero or below means the trade round-tripped.
+        </>
+      ),
+    },
     cell: ({ row }) => {
       const c = row.original;
       if (c.capture_pct == null) return <span className="text-text-subtle">—</span>;
-      return (
-        <span
-          className={captureTone(c.peak_pct, c.capture_pct)}
-          title="% of the peak gain the exit kept — ~100 sold near the top, ≤0 round-tripped"
-        >
-          {c.capture_pct}%
-        </span>
-      );
+      return <span className={captureTone(c.peak_pct, c.capture_pct)}>{c.capture_pct}%</span>;
     },
   },
   {
@@ -570,175 +661,6 @@ const closedColumns: ColumnDef<Closed, unknown>[] = [
     cell: ({ row }) => row.original.closed_at || '—',
   },
 ];
-
-// ── Equity sparkline (pure SVG, no charting dependency) ──────────────────────
-// Two series on one dollar scale: the book's equity (green/red = up/down) and a
-// muted-blue benchmark grown from the same starting dollar (firstEquity ×
-// (1+bench%)). Benchmark is blue-not-red so P&L color stays unambiguous.
-const BENCH_COLOR = '#6ea8fe';
-function EquityChart({ label, points }: { label: string; points: EquityPoint[] }) {
-  // Keep only points with a real equity value, but carry bench_pct/ret_pct along.
-  const rows = points.filter((p): p is EquityPoint & { equity: number } => p.equity != null);
-  if (rows.length < 2) {
-    return (
-      <div className="rounded-xl border border-border bg-bg-elevated/40 p-4">
-        <div className="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-          {label}
-        </div>
-        <p className="mt-3 text-xs text-text-muted">No history yet.</p>
-      </div>
-    );
-  }
-  const W = 260,
-    H = 64,
-    pad = 4;
-  const vals = rows.map((r) => r.equity);
-  const first = vals[0];
-  const last = vals[vals.length - 1];
-  const up = last >= first;
-
-  // Benchmark grown from the same starting dollar. Only where bench_pct exists.
-  const benchEq = rows.map((r) =>
-    typeof r.bench_pct === 'number' ? first * (1 + r.bench_pct / 100) : null,
-  );
-  const benchCount = benchEq.filter((v) => v != null).length;
-  const hasBench = benchCount >= 2;
-
-  const scaleVals = hasBench ? vals.concat(benchEq.filter((v): v is number => v != null)) : vals;
-  const min = Math.min(...scaleVals),
-    max = Math.max(...scaleVals);
-  const span = max - min || 1;
-  const step = (W - pad * 2) / (rows.length - 1);
-  const x = (i: number) => pad + i * step;
-  const y = (v: number) => H - pad - ((v - min) / span) * (H - pad * 2);
-
-  const d = vals
-    .map((v, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(v).toFixed(1)}`)
-    .join(' ');
-  // Benchmark path may have leading/trailing gaps; start a fresh sub-path after
-  // any null so we never draw a line through missing data.
-  let benchD = '';
-  let penDown = false;
-  benchEq.forEach((v, i) => {
-    if (v == null) {
-      penDown = false;
-      return;
-    }
-    benchD += `${penDown ? 'L' : 'M'} ${x(i).toFixed(1)} ${y(v).toFixed(1)} `;
-    penDown = true;
-  });
-
-  const color = up ? '#7af2a0' : '#fb7185';
-  const chgPct = first ? ((last - first) / first) * 100 : 0;
-  // Gap vs benchmark in points: book cumulative return minus benchmark return.
-  const lastRow = rows[rows.length - 1];
-  const bookRet = typeof lastRow.ret_pct === 'number' ? lastRow.ret_pct : chgPct;
-  const benchRet = typeof lastRow.bench_pct === 'number' ? lastRow.bench_pct : null;
-  const gapPts = benchRet != null ? bookRet - benchRet : null;
-
-  return (
-    <div className="rounded-xl border border-border bg-bg-elevated/40 p-4">
-      <div className="flex items-baseline justify-between gap-2">
-        <div className="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-          {label}
-        </div>
-        <div
-          className={
-            'font-mono text-xs tabular-nums ' + (up ? 'text-emerald-300' : 'text-rose-300')
-          }
-        >
-          {up ? '+' : ''}
-          {chgPct.toFixed(1)}%
-        </div>
-      </div>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="mt-2 w-full"
-        preserveAspectRatio="none"
-        role="img"
-        aria-label={
-          `${label}: ${up ? 'up' : 'down'} ${Math.abs(chgPct).toFixed(1)} percent` +
-          (gapPts != null
-            ? `, ${gapPts >= 0 ? 'ahead of' : 'behind'} benchmark by ${Math.abs(gapPts).toFixed(1)} points`
-            : '')
-        }
-      >
-        {hasBench && (
-          <path
-            d={benchD.trim()}
-            fill="none"
-            stroke={BENCH_COLOR}
-            strokeWidth="1.25"
-            strokeOpacity="0.7"
-            strokeDasharray="3 3"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        )}
-        <path
-          d={d}
-          fill="none"
-          stroke={color}
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-      </svg>
-      <div className="mt-1.5 flex items-center justify-between gap-2 font-mono text-[10px] tabular-nums">
-        {hasBench ? (
-          <span className="inline-flex items-center gap-2 text-text-subtle">
-            <span className="inline-flex items-center gap-1">
-              <span
-                className="inline-block h-0.5 w-3 align-middle"
-                style={{ backgroundColor: color }}
-                aria-hidden="true"
-              />
-              book
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span
-                className="inline-block h-0 w-3 border-t border-dashed align-middle"
-                style={{ borderColor: BENCH_COLOR }}
-                aria-hidden="true"
-              />
-              bench
-            </span>
-          </span>
-        ) : (
-          <span className="text-text-subtle">${first.toLocaleString()}</span>
-        )}
-        {gapPts != null ? (
-          <span className={gapPts >= 0 ? 'text-emerald-300' : 'text-rose-300'}>
-            {gapPts >= 0 ? '+' : '−'}
-            {Math.abs(gapPts).toFixed(1)} pts vs bench
-          </span>
-        ) : (
-          <span className="text-text-subtle">${last.toLocaleString()}</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Section({
-  title,
-  count,
-  children,
-}: {
-  title: string;
-  count?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section>
-      <h2 className="mb-2.5 mt-9 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
-        {title}
-        {count ? ` · ${count}` : ''}
-      </h2>
-      {children}
-    </section>
-  );
-}
 
 const Empty = ({ children }: { children: React.ReactNode }) => (
   <p className="text-sm text-text-muted">{children}</p>
@@ -777,102 +699,67 @@ const closedFacts = (c: Closed): TradeFacts | null =>
       }
     : null;
 
-function LifecycleDetail({ facts }: { facts: TradeFacts | null }) {
+function LifecycleDetail({ facts, thesis }: { facts: TradeFacts | null; thesis?: string | null }) {
+  // The thesis used to live in a title="" on the ticker, which meant keyboard
+  // and touch users could never read it. It belongs here, in the row's own
+  // detail panel, where it has room to be a sentence.
+  const note = thesis ? (
+    <p className="border-b border-border px-4 py-3 text-sm leading-relaxed text-text-muted">
+      <span className="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+        Thesis ·{' '}
+      </span>
+      {thesis}
+    </p>
+  ) : null;
+
   if (!facts) {
     return (
-      <p className="px-4 py-4 text-xs text-text-muted">
-        No lifecycle data for this row (published before the chart fields existed — the next
-        snapshot will carry them).
-      </p>
+      <>
+        {note}
+        <p className="px-4 py-4 text-xs text-text-muted">
+          No lifecycle data for this row (published before the chart fields existed — the next
+          snapshot will carry them).
+        </p>
+      </>
     );
   }
   // Keyed per trade: a different trade remounts the chart, so its fetch state
   // starts clean without effect-time setState (react-hooks/set-state-in-effect).
   return (
-    <TradeLifecycle
-      key={facts.symbol + ':' + (facts.opened_at ?? '') + ':' + (facts.closed_at ?? '')}
-      trade={facts}
+    <>
+      {note}
+      <TradeLifecycle
+        key={facts.symbol + ':' + (facts.opened_at ?? '') + ':' + (facts.closed_at ?? '')}
+        trade={facts}
+      />
+    </>
+  );
+}
+
+// Positions and closed trades ship as separate islands so each can mount into
+// its own tab panel. Splitting them also means the 60-row closed table isn't
+// built on first paint when the user is looking at positions.
+
+export function PositionsTable({ positions = [] }: { positions?: Position[] }) {
+  if (positions.length === 0) return <Empty>No open positions.</Empty>;
+  return (
+    <DataTable
+      data={positions}
+      columns={positionColumns}
+      scroll={positions.length > 12}
+      detail={(p) => <LifecycleDetail facts={positionFacts(p)} thesis={p.thesis} />}
     />
   );
 }
 
-const CURVE_LABELS: Record<string, string> = {
-  stock: 'Stocks',
-  crypto: 'Crypto',
-  mild_stock: 'Mild stk',
-  mild_crypto: 'Mild crp',
-  aggressive_stock: 'Aggressive stk',
-  aggressive_crypto: 'Aggressive crp',
-  systematic: 'Systematic (no-AI)',
-  alpaca: 'Alpaca (broker)',
-};
-
-// Sleeves first, then the control + live rails, so the grid reads in the same
-// order as the book cards above. Unknown keys sort last, in publish order.
-const CURVE_ORDER = [
-  'stock',
-  'crypto',
-  'mild_stock',
-  'mild_crypto',
-  'aggressive_stock',
-  'aggressive_crypto',
-  'systematic',
-  'alpaca',
-];
-
-export default function TraderTables({
-  positions = [],
-  closed = [],
-  equityCurve = {},
-}: {
-  positions?: Position[];
-  closed?: Closed[];
-  equityCurve?: Record<string, EquityPoint[]>;
-}) {
-  const curves = Object.entries(equityCurve)
-    .filter(([, pts]) => (pts?.length ?? 0) > 0)
-    .sort(([a], [b]) => {
-      const ia = CURVE_ORDER.indexOf(a),
-        ib = CURVE_ORDER.indexOf(b);
-      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-    });
+export function ClosedTable({ closed = [] }: { closed?: Closed[] }) {
+  if (closed.length === 0) return <Empty>No closed trades yet.</Empty>;
   return (
-    <>
-      {curves.length > 0 && (
-        <Section title="Equity curves · vs benchmark">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {curves.map(([key, pts]) => (
-              <EquityChart key={key} label={CURVE_LABELS[key] ?? key} points={pts} />
-            ))}
-          </div>
-        </Section>
-      )}
-
-      <Section title="Open positions" count={String(positions.length)}>
-        {positions.length === 0 ? (
-          <Empty>No open positions.</Empty>
-        ) : (
-          <DataTable
-            data={positions}
-            columns={positionColumns}
-            scroll={positions.length > 12}
-            detail={(p) => <LifecycleDetail facts={positionFacts(p)} />}
-          />
-        )}
-      </Section>
-
-      <Section title="Recent closed trades" count={String(closed.length)}>
-        {closed.length === 0 ? (
-          <Empty>No closed trades yet.</Empty>
-        ) : (
-          <DataTable
-            data={closed}
-            columns={closedColumns}
-            scroll={closed.length > 12}
-            detail={(c) => <LifecycleDetail facts={closedFacts(c)} />}
-          />
-        )}
-      </Section>
-    </>
+    <DataTable
+      data={closed}
+      columns={closedColumns}
+      scroll={closed.length > 12}
+      detail={(c) => <LifecycleDetail facts={closedFacts(c)} />}
+    />
   );
 }
