@@ -209,7 +209,14 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
           {/* gridlines + y ticks */}
           {ticks.map((v) => (
             <g key={v}>
-              <line x1={M.left} x2={W - M.right} y1={y(v)} y2={y(v)} stroke={GRID} strokeWidth="1" />
+              <line
+                x1={M.left}
+                x2={W - M.right}
+                y1={y(v)}
+                y2={y(v)}
+                stroke={GRID}
+                strokeWidth="1"
+              />
               <text
                 x={W - M.right + 6}
                 y={y(v) + 3}
@@ -303,7 +310,14 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
           {/* peak flag (only when it isn't the entry/exit bar) */}
           {peakIdx !== entryIdx && peakIdx !== exitIdx && (
             <g>
-              <circle cx={x(peakIdx)} cy={y(c[peakIdx])} r="4" fill={PEAK} stroke="#0e1011" strokeWidth="2" />
+              <circle
+                cx={x(peakIdx)}
+                cy={y(c[peakIdx])}
+                r="4"
+                fill={PEAK}
+                stroke="#0e1011"
+                strokeWidth="2"
+              />
               <text
                 x={x(peakIdx)}
                 y={y(c[peakIdx]) - 8}
@@ -319,7 +333,14 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
 
           {/* entry marker */}
           <g>
-            <circle cx={x(entryIdx)} cy={trade.entry ? y(trade.entry) : ys[entryIdx]} r="4.5" fill="#e6e7e8" stroke="#0e1011" strokeWidth="2" />
+            <circle
+              cx={x(entryIdx)}
+              cy={trade.entry ? y(trade.entry) : ys[entryIdx]}
+              r="4.5"
+              fill="#e6e7e8"
+              stroke="#0e1011"
+              strokeWidth="2"
+            />
             <text
               x={x(entryIdx)}
               y={H - M.bottom + 14}
@@ -398,8 +419,12 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
             <table className="text-[10px]">
               <thead>
                 <tr className="text-left">
-                  <th scope="col" className="pr-4 font-medium">date</th>
-                  <th scope="col" className="text-right font-medium">close</th>
+                  <th scope="col" className="pr-4 font-medium">
+                    date
+                  </th>
+                  <th scope="col" className="text-right font-medium">
+                    close
+                  </th>
                 </tr>
               </thead>
               <tbody>

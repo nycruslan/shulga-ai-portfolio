@@ -360,7 +360,10 @@ const positionColumns: ColumnDef<Position, unknown>[] = [
   {
     accessorKey: 'entry',
     header: 'Entry',
-    meta: { align: 'right', className: 'whitespace-nowrap font-mono tabular-nums text-text-subtle' },
+    meta: {
+      align: 'right',
+      className: 'whitespace-nowrap font-mono tabular-nums text-text-subtle',
+    },
     cell: ({ row }) => fmtPrice(row.original.entry),
   },
   {
@@ -402,7 +405,11 @@ const positionColumns: ColumnDef<Position, unknown>[] = [
       return (
         <span
           className={fading ? 'text-amber-300' : 'text-text-muted'}
-          title={fading ? 'was ahead ≥5%, now flat or down — giving the gain back' : 'best unrealized gain so far'}
+          title={
+            fading
+              ? 'was ahead ≥5%, now flat or down — giving the gain back'
+              : 'best unrealized gain so far'
+          }
         >
           +{p.peak_pct}%
         </span>
@@ -504,7 +511,10 @@ const closedColumns: ColumnDef<Closed, unknown>[] = [
     meta: { align: 'right', className: 'whitespace-nowrap font-mono tabular-nums text-text-muted' },
     cell: ({ row }) =>
       row.original.peak_pct == null ? (
-        <span className="text-text-subtle" title="no peak recorded (pre-watermark trade or never above entry)">
+        <span
+          className="text-text-subtle"
+          title="no peak recorded (pre-watermark trade or never above entry)"
+        >
           —
         </span>
       ) : (
@@ -590,9 +600,7 @@ function EquityChart({ label, points }: { label: string; points: EquityPoint[] }
   const benchCount = benchEq.filter((v) => v != null).length;
   const hasBench = benchCount >= 2;
 
-  const scaleVals = hasBench
-    ? vals.concat(benchEq.filter((v): v is number => v != null))
-    : vals;
+  const scaleVals = hasBench ? vals.concat(benchEq.filter((v): v is number => v != null)) : vals;
   const min = Math.min(...scaleVals),
     max = Math.max(...scaleVals);
   const span = max - min || 1;
@@ -600,9 +608,9 @@ function EquityChart({ label, points }: { label: string; points: EquityPoint[] }
   const x = (i: number) => pad + i * step;
   const y = (v: number) => H - pad - ((v - min) / span) * (H - pad * 2);
 
-  const d = vals.map((v, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(
-    ' ',
-  );
+  const d = vals
+    .map((v, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(v).toFixed(1)}`)
+    .join(' ');
   // Benchmark path may have leading/trailing gaps; start a fresh sub-path after
   // any null so we never draw a line through missing data.
   let benchD = '';
@@ -631,7 +639,9 @@ function EquityChart({ label, points }: { label: string; points: EquityPoint[] }
           {label}
         </div>
         <div
-          className={'font-mono text-xs tabular-nums ' + (up ? 'text-emerald-300' : 'text-rose-300')}
+          className={
+            'font-mono text-xs tabular-nums ' + (up ? 'text-emerald-300' : 'text-rose-300')
+          }
         >
           {up ? '+' : ''}
           {chgPct.toFixed(1)}%

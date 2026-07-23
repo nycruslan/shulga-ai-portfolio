@@ -50,7 +50,9 @@ const decision = snap?.decision_test;
 // Group the 9 books: paper sleeves together, then the control + live rails set
 // apart (real money must never blend in with a paper sleeve).
 const paperBooks = books.filter((b) => (b.kind ?? 'paper') === 'paper');
-const capitalBooks = books.filter((b) => b.kind === 'control' || b.kind === 'real' || b.kind === 'broker-paper');
+const capitalBooks = books.filter(
+  (b) => b.kind === 'control' || b.kind === 'real' || b.kind === 'broker-paper',
+);
 
 const updatedDate = snap?.generated_at ? new Date(snap.generated_at) : null;
 // Relative time is timezone-safe; toLocaleString() would render in the server's
@@ -118,11 +120,7 @@ const bookBadge = (b: TraderBook): Badge => {
 
 // Decision-test scoreboard tone: green when the AI is ahead of the code.
 const verdictTone = (v?: string) =>
-  v === 'AI ahead'
-    ? 'text-emerald-300'
-    : v === 'code ahead'
-      ? 'text-rose-300'
-      : 'text-text-muted';
+  v === 'AI ahead' ? 'text-emerald-300' : v === 'code ahead' ? 'text-rose-300' : 'text-text-muted';
 ---
 
 <AdminShell title="AI Trader">
@@ -151,7 +149,8 @@ const verdictTone = (v?: string) =>
       ) : result.status === 'unconfigured' ? (
         <p class="mt-8 text-sm text-text-muted">
           Turso isn’t configured in this environment (no{' '}
-          <code class="font-mono text-text-subtle">TURSO_*</code> creds), so there’s nothing to read.
+          <code class="font-mono text-text-subtle">TURSO_*</code> creds), so there’s nothing to
+          read.
         </p>
       ) : (
         <div class="mt-8 rounded-xl border border-border bg-bg-elevated/40 px-4 py-3.5 text-sm text-text-muted">
@@ -259,7 +258,9 @@ const verdictTone = (v?: string) =>
                   <div class="font-mono text-[10px] uppercase tracking-wider text-text-subtle">
                     AI core
                   </div>
-                  <div class={'mt-0.5 text-2xl font-medium tabular-nums ' + tone(decision.ai_ret_pct)}>
+                  <div
+                    class={'mt-0.5 text-2xl font-medium tabular-nums ' + tone(decision.ai_ret_pct)}
+                  >
                     {pct(decision.ai_ret_pct)}
                   </div>
                 </div>
@@ -269,7 +270,8 @@ const verdictTone = (v?: string) =>
                   </div>
                   <div
                     class={
-                      'mt-0.5 text-2xl font-medium tabular-nums ' + tone(decision.systematic_ret_pct)
+                      'mt-0.5 text-2xl font-medium tabular-nums ' +
+                      tone(decision.systematic_ret_pct)
                     }
                   >
                     {pct(decision.systematic_ret_pct)}
@@ -336,7 +338,9 @@ const verdictTone = (v?: string) =>
                         {b.name}
                       </div>
                       <span
-                        class={'shrink-0 rounded-full px-2 py-0.5 text-[9px] uppercase ' + badge.pill}
+                        class={
+                          'shrink-0 rounded-full px-2 py-0.5 text-[9px] uppercase ' + badge.pill
+                        }
                         aria-label={badge.aria}
                       >
                         {badge.label}
@@ -441,7 +445,9 @@ const verdictTone = (v?: string) =>
                         {b.name}
                       </div>
                       <span
-                        class={'shrink-0 rounded-full px-2 py-0.5 text-[9px] uppercase ' + badge.pill}
+                        class={
+                          'shrink-0 rounded-full px-2 py-0.5 text-[9px] uppercase ' + badge.pill
+                        }
                         aria-label={badge.aria}
                       >
                         {badge.label}
@@ -495,7 +501,9 @@ const verdictTone = (v?: string) =>
                           )}
                           {b.account_source && (
                             <span class="ml-auto">
-                              {b.account_source === 'broker_api' ? 'live broker feed' : 'session-recorded'}
+                              {b.account_source === 'broker_api'
+                                ? 'live broker feed'
+                                : 'session-recorded'}
                             </span>
                           )}
                         </div>

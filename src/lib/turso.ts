@@ -294,8 +294,7 @@ function normalizeTraderSnapshot(raw: unknown): TraderSnapshot {
     books: asArray<TraderBook>(p.books),
     positions: asArray<TraderPosition>(p.positions),
     closed: asArray<TraderClosed>(p.closed),
-    equity_curve:
-      p.equity_curve && typeof p.equity_curve === 'object' ? p.equity_curve : {},
+    equity_curve: p.equity_curve && typeof p.equity_curve === 'object' ? p.equity_curve : {},
     reflections: asArray(p.reflections),
     macro_events: asArray<TraderMacroEvent>(p.macro_events),
     degraded: asArray<string>(p.degraded),
