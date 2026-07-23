@@ -51,6 +51,8 @@ type Result = {
   win_rate?: number | null;
   capture_avg?: number | null;
   curve?: Array<{ t?: string; equity?: number | null }>;
+  bought_today?: number | null;
+  scan_today?: { day?: string; strong_buys?: number | null; buys?: number | null };
   positions?: OpenRow[];
   closed?: ClosedRow[];
 };
@@ -327,6 +329,7 @@ export default function PlaygroundManager({
   const [name, setName] = useState('');
   const [capital, setCapital] = useState(25_000);
   const [ruleType, setRuleType] = useState<'top_n' | 'all' | 'min_score'>('top_n');
+  const [plainBuys, setPlainBuys] = useState(false);
   const [topN, setTopN] = useState(5);
   const [minScore, setMinScore] = useState(95);
   const [sizePct, setSizePct] = useState(5);
@@ -347,7 +350,7 @@ export default function PlaygroundManager({
           : ruleType === 'all'
             ? { type: 'all' }
             : { type: 'min_score', min_score: minScore },
-      include_plain_buys: false,
+      include_plain_buys: plainBuys,
       size_pct: sizePct,
       max_positions: maxPositions,
       sector_cap: sectorCap === '' ? null : sectorCap,
@@ -513,8 +516,21 @@ export default function PlaygroundManager({
                 <option value="min_score">Score threshold</option>
               </select>
               <p className={HELP}>
-                Which of the day's STRONG BUYs to buy (the scan finds ~5–20/day, median 13).
+                Which of the day's STRONG BUYs to buy (the scan finds ~5–20/day, median 13 — but
+                some days have zero).
               </p>
+              <label className="mt-2 flex cursor-pointer items-start gap-2 text-[11px] text-text-muted">
+                <input
+                  type="checkbox"
+                  checked={plainBuys}
+                  onChange={(e) => setPlainBuys(e.target.checked)}
+                  className="mt-0.5 accent-emerald-400"
+                />
+                <span>
+                  Include plain BUYs (second tier, scores ~80–90). Keeps the portfolio active on
+                  days when the scan has no STRONG BUYs at all.
+                </span>
+              </label>
             </div>
             {ruleType === 'top_n' && (
               <div>
@@ -775,6 +791,15 @@ export default function PlaygroundManager({
                     {r.win_rate != null && <span>{r.win_rate}% win</span>}
                     {r.capture_avg != null && <span>kept {r.capture_avg}% of peaks</span>}
                   </div>
+                  {r.scan_today?.day && (
+                    <p className="mt-1.5 text-[11px] text-text-muted">
+                      {(r.bought_today ?? 0) > 0
+                        ? `Today: bought ${r.bought_today} · scan had ${r.scan_today.strong_buys ?? 0} strong buys`
+                        : (r.scan_today.strong_buys ?? 0) === 0
+                          ? `Today: nothing bought — the scan produced 0 STRONG BUYs (${r.scan_today.buys ?? 0} plain BUYs; enable "include plain BUYs" to trade days like this).`
+                          : `Today: nothing bought yet · scan has ${r.scan_today.strong_buys} strong buys.`}
+                    </p>
+                  )}
                 </>
               ) : (
                 <p className="mt-1.5 text-xs text-text-subtle">

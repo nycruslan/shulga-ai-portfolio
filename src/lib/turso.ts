@@ -271,6 +271,8 @@ export type PlaygroundResult = {
   win_rate?: number | null;
   capture_avg?: number | null;
   created_at?: string;
+  bought_today?: number | null;
+  scan_today?: { day?: string; strong_buys?: number | null; buys?: number | null };
   positions?: TraderPosition[];
   closed?: TraderClosed[];
   curve?: EquityPoint[];
