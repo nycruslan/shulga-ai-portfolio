@@ -227,8 +227,11 @@ function PortfolioTrades({ name, result }: { name: string; result?: Result }) {
     );
   }
   return (
-    <div className="grid gap-5">
-      <div>
+    // min-w-0 throughout: every one of these is a grid item, and a single
+    // ancestor left at the default min-width:auto is enough to re-break the
+    // horizontal scroll on a narrow screen.
+    <div className="grid min-w-0 gap-5">
+      <div className="min-w-0">
         <h3 className="mb-2 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
           {name} · open positions · {opens.length}
         </h3>
@@ -262,7 +265,7 @@ function PortfolioTrades({ name, result }: { name: string; result?: Result }) {
           />
         )}
       </div>
-      <div>
+      <div className="min-w-0">
         <h3 className="mb-2 font-mono text-[11px] uppercase tracking-wider text-text-subtle">
           {name} · closed trades · {closed.length}
         </h3>
@@ -870,7 +873,7 @@ export default function PlaygroundManager({
                 // not the viewport's. An open card spans the grid while its
                 // neighbours stay half-width, so a viewport breakpoint would
                 // get one of the two wrong every time.
-                '@container rounded-xl border p-4 transition-colors ' +
+                '@container min-w-0 rounded-xl border p-4 transition-colors ' +
                 // An open card spans the grid so its trade tables get the full
                 // width; at half a column they would scroll horizontally.
                 (selected
@@ -1037,7 +1040,7 @@ export default function PlaygroundManager({
               {/* The trades panel lives INSIDE its own card. It used to render
                   after the entire grid, so opening the first card pushed its
                   table below every other card. */}
-              <div id={`pg-trades-${c.id}`} hidden={!selected} className="mt-4">
+              <div id={`pg-trades-${c.id}`} hidden={!selected} className="mt-4 min-w-0">
                 {selected && <PortfolioTrades name={c.name} result={r} />}
               </div>
             </section>
