@@ -93,9 +93,10 @@ const updated = snap?.generated_at ? relativeTime(snap.generated_at) : null;
       <div>
         <dt class="font-medium text-text">Take profit — the "sell when up" rule</dt>
         <dd class="text-text-muted">
-          Sells the whole position once it's up your %. Checked at the two daily runs (10:05 and
-          16:05 ET), <em>not</em> tick-level — an intraday spike between runs won't trigger it. Blank
-          = no target: winners ride the trailing stop and the +2R half-sell instead.
+          Sells the whole position once it's up your %. Enforced tick-level by the live monitor
+          (two confirming ticks, same as stops), with the two daily runs (10:05 and 16:05 ET) as a
+          backstop if the monitor was down. Blank = no target: winners ride the trailing stop and
+          the +2R half-sell instead.
         </dd>
       </div>
       <div>
