@@ -1,0 +1,830 @@
+---
+export const prerender = false;
+import AdminShell from '../../layouts/AdminShell.astro';
+import DeckTabs from '../../components/admin/DeckTabs.astro';
+import SystemDiagrams from '../../components/admin/SystemDiagrams.astro';
+import ExitLadderDiagram from '../../components/admin/ExitLadderDiagram.astro';
+import ScoreWeights from '../../components/admin/ScoreWeights.astro';
+
+// Middleware gates all of /admin to the owner. This page documents live
+// strategy internals — exact factor weights, action cutoffs, risk rails — so it
+// stays behind auth and out of the index deliberately.
+//
+// Source of truth: ~/.portfolio_copilot. Every number below was read from the
+// code, not from memory. Where a value comes from a named constant the constant
+// is cited, so a future re-tune has an obvious place to check.
+
+const SCORE_FACTORS = [
+  {
+    label: 'Momentum · residual RS',
+    pts: 40,
+    slot: 1,
+    note: 'The 1–99 relative-strength percentile, measured as excess over beta×SPY rather than raw return.',
+  },
+  {
+    label: 'Trend quality · Minervini',
+    pts: 30,
+    slot: 2,
+    note: 'How many of the 8 Stage-2 uptrend criteria the chart passes, scaled to 30.',
+  },
+  {
+    label: 'Setup quality · RSI',
+    pts: 15,
+    slot: 3,
+    note: 'Full credit for a pullback to RSI 40–55 inside an uptrend; near-full for a 55–70 breakout.',
+  },
+  {
+    label: 'Trend strength · ADX',
+    pts: 10,
+    slot: 4,
+    note: 'A smooth gate, not a score: zero below ADX 15, full only at 40. Deliberately demoted.',
+  },
+  {
+    label: 'Volume confirmation',
+    pts: 5,
+    slot: 5,
+    note: 'Full credit at 1.5× relative volume, partial at 1.2×. Institutional accumulation.',
+  },
+];
+
+const SCORE_TILTS = [
+  { label: 'MACD bullish above zero', pts: '+3', note: 'Bearish below zero scores −2.' },
+  {
+    label: 'Bollinger squeeze in uptrend',
+    pts: '+3',
+    note: 'Price at the lower band while the trend is intact.',
+  },
+  { label: 'Sector rotation', pts: '±2', note: 'Tilts with the strength of the name’s sector.' },
+  {
+    label: 'Low-volatility quality',
+    pts: '+3',
+    note: 'ATR ≤3% of price. Calmer names compound with smaller drawdowns.',
+  },
+  {
+    label: 'High volatility',
+    pts: '−3',
+    note: 'ATR ≥8%. Erratic names whipsaw out of their stops.',
+    bad: true,
+  },
+  {
+    label: 'Crowding fade',
+    pts: '−6',
+    note: 'All three at once: +25% in a month, 3× volume, RSI ≥80. Herding, not accumulation.',
+    bad: true,
+  },
+];
+
+type Book = {
+  name: string;
+  kind: 'paper' | 'control' | 'broker' | 'real';
+  equity: string;
+  maxName: string;
+  slots: string;
+  risk: string;
+  note: string;
+};
+
+const BOOKS: Book[] = [
+  {
+    name: 'Core stock',
+    kind: 'paper',
+    equity: '$50,000',
+    maxName: '5%',
+    slots: '10',
+    risk: '1.0%',
+    note: 'The reference book. Every default in the system is its default.',
+  },
+  {
+    name: 'Core crypto',
+    kind: 'paper',
+    equity: '$25,000',
+    maxName: '4%',
+    slots: '8',
+    risk: '0.5%',
+    note: 'Same engine, crypto-tuned lookbacks and thresholds.',
+  },
+  {
+    name: 'Mild stock',
+    kind: 'paper',
+    equity: '$8,000',
+    maxName: '6.5%',
+    slots: '9',
+    risk: '1.5%',
+    note: 'Aggressive at half dose. Also the trial arm for the modern exit stack.',
+  },
+  {
+    name: 'Mild crypto',
+    kind: 'paper',
+    equity: '$5,000',
+    maxName: '6%',
+    slots: '8',
+    risk: '1.25%',
+    note: 'Mid-rung of the ladder on a higher-quality universe.',
+  },
+  {
+    name: 'Aggressive stock',
+    kind: 'paper',
+    equity: '$6,000',
+    maxName: '8%',
+    slots: '8',
+    risk: '2.0%',
+    note: 'Reaches down to $50M caps, re-weights toward momentum, halves the regime brake.',
+  },
+  {
+    name: 'Aggressive crypto',
+    kind: 'paper',
+    equity: '$4,000',
+    maxName: '8%',
+    slots: '8',
+    risk: '2.0%',
+    note: 'Will take alt risk in a risk-off tape, downgraded one notch. An explicit experiment.',
+  },
+  {
+    name: 'Systematic',
+    kind: 'control',
+    equity: '$50,000',
+    maxName: '5%',
+    slots: '20',
+    risk: '1.0%',
+    note: 'Buys every STRONG BUY with zero AI. The control arm of the decision test.',
+  },
+  {
+    name: 'Alpaca',
+    kind: 'broker',
+    equity: '$100,000',
+    maxName: '$5,000',
+    slots: '16',
+    risk: '—',
+    note: 'Broker paper. Real order plumbing, real fills, no real money.',
+  },
+  {
+    name: 'Robinhood',
+    kind: 'real',
+    equity: '≤ $100',
+    maxName: '$20/trade',
+    slots: '20',
+    risk: '—',
+    note: 'The only book with real money. Hard-capped at $100 account value and 12 trades a day.',
+  },
+];
+
+const kindTone: Record<Book['kind'], string> = {
+  paper: 'bg-white/[0.04] text-text-subtle ring-border-strong',
+  control: 'bg-cat-4/12 text-cat-4 ring-cat-4/30',
+  broker: 'bg-cat-5/12 text-cat-5 ring-cat-5/30',
+  real: 'bg-amber-400/15 text-amber-200 ring-amber-400/60 font-semibold',
+};
+const kindLabel: Record<Book['kind'], string> = {
+  paper: 'paper',
+  control: 'no-AI control',
+  broker: 'broker paper',
+  real: 'REAL MONEY',
+};
+
+const RAILS = [
+  ['Per name', '5% of the book', 'MAX_STOCK_PCT · 4% for crypto'],
+  ['Open positions', '10 stock / 8 crypto', 'MAX_STOCK_POSITIONS'],
+  ['Per sector', '3 names', 'MAX_PER_SECTOR'],
+  ['Portfolio heat', '8% total open risk', 'PORTFOLIO_HEAT_CAP_PCT'],
+  ['Daily loss', 'halt new buys at −5%', 'DAILY_LOSS_LIMIT_PCT'],
+  ['Drawdown', 'halt new buys at −12% from peak', 'MAX_DRAWDOWN_PCT'],
+  ['Earnings', 'no new size within 5 days', 'EARNINGS_DERISK_DAYS'],
+  ['Price sanity', 'reject a quote >20% off the mark', 'PRICE_DEVIATION_TOLERANCE'],
+];
+---
+
+<AdminShell title="How It Works">
+  <span slot="meta" class="hidden text-xs text-text-subtle sm:inline">
+    read from ~/.portfolio_copilot
+  </span>
+
+  <!-- ── The one-sentence version ─────────────────────────────────────────── -->
+  <section class="mt-6 rounded-2xl border border-border-strong bg-bg-elevated/60 p-6">
+    <h2 class="font-mono text-xs uppercase tracking-wider text-text-subtle">The whole idea</h2>
+    <p class="mt-3 max-w-3xl text-lg leading-relaxed text-text">
+      Code does the math and guards the money. The AI makes the judgment calls. <b
+        >Code always gets the final say on safety</b
+      >, and it can reject the AI without appeal.
+    </p>
+    <p class="mt-3 max-w-3xl text-sm leading-relaxed text-text-muted">
+      Everything below follows from that one split. The AI never touches money — it writes down
+      decisions, and separate code decides whether those decisions are allowed to happen. Nearly all
+      selling happens with no AI involved at all.
+    </p>
+
+    <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div class="rounded-xl border border-cat-5/30 bg-cat-5/[0.07] p-4">
+        <div class="font-mono text-xs uppercase tracking-wider text-cat-5">The Scanner</div>
+        <p class="mt-1.5 text-sm text-text">Plain code</p>
+        <p class="mt-1 text-xs leading-relaxed text-text-muted">
+          Scores ~2,500 liquid US names every morning and hands over a ranked shopping list with a
+          stop already attached to each one.
+        </p>
+      </div>
+      <div class="rounded-xl border border-cat-3/30 bg-cat-3/[0.07] p-4">
+        <div class="font-mono text-xs uppercase tracking-wider text-cat-3">The AI</div>
+        <p class="mt-1.5 text-sm text-text">Claude</p>
+        <p class="mt-1 text-xs leading-relaxed text-text-muted">
+          Reads the list plus news, open positions and past lessons, then writes down what to buy
+          and why. It moves no money.
+        </p>
+      </div>
+      <div class="rounded-xl border border-loss/30 bg-loss/[0.06] p-4">
+        <div class="font-mono text-xs uppercase tracking-wider text-loss">The Guard</div>
+        <p class="mt-1.5 text-sm text-text">Plain code, 24/7</p>
+        <p class="mt-1 text-xs leading-relaxed text-text-muted">
+          Vets every order against hard limits, then babysits each position tick by tick and sells
+          automatically on stops, trails, targets and time.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <DeckTabs
+    tabs={[
+      { id: 'flow', label: 'Architecture' },
+      { id: 'books', label: 'Books', count: BOOKS.length },
+      { id: 'scoring', label: 'Scoring' },
+      { id: 'sizing', label: 'Sizing & risk' },
+      { id: 'exits', label: 'Exits' },
+      { id: 'proof', label: 'Proof' },
+    ]}
+  >
+    <!-- ══ ARCHITECTURE ══════════════════════════════════════════════════ -->
+    <Fragment slot="flow">
+      <h3 class="font-mono text-xs uppercase tracking-wider text-text-subtle">
+        Four stages, one direction
+      </h3>
+      <SystemDiagrams />
+
+      <h3 class="mb-2.5 mt-8 font-mono text-xs uppercase tracking-wider text-text-subtle">
+        Who decides what
+      </h3>
+      <div class="overflow-x-auto rounded-xl border border-border bg-bg-elevated/40">
+        <table class="w-full border-collapse text-sm">
+          <thead>
+            <tr class="text-left font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+              <th scope="col" class="px-4 py-2.5 font-medium">Decision</th>
+              <th scope="col" class="px-4 py-2.5 font-medium">Owner</th>
+              <th scope="col" class="px-4 py-2.5 font-medium">Can the AI override?</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              [
+                ['Which names are candidates', 'Code — the Scanner', 'No'],
+                ['Which candidates to actually buy', 'AI', '—'],
+                ['Whether that buy is allowed', 'Code — the Guard', 'No'],
+                ['Placing the order', 'Code', 'No'],
+                ['Selling at a stop', 'Code, automatically', 'No'],
+                ['Moving the stop up on a winner', 'Code, automatically', 'No'],
+                ['Taking half off at +2R', 'Code, automatically', 'No'],
+                ['Selling because the thesis broke', 'AI', 'Rare, and still Guard-checked'],
+                ['Position size and risk limits', 'Code', 'No'],
+              ].map(([what, who, override]) => (
+                <tr class="border-t border-border/70">
+                  <td class="px-4 py-2.5 text-text">{what}</td>
+                  <td class="px-4 py-2.5 text-text-muted">{who}</td>
+                  <td
+                    class={
+                      'px-4 py-2.5 font-mono text-xs ' +
+                      (override === 'No' ? 'text-loss' : 'text-text-subtle')
+                    }
+                  >
+                    {override}
+                  </td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-4 rounded-xl border border-warning/30 bg-warning/[0.06] p-4">
+        <p class="text-sm leading-relaxed text-warning">
+          Why selling is mostly automatic: the record showed discretionary AI sells lost money
+          almost every time, while mechanical exits made it. So the AI was taken out of the loop for
+          routine selling and now only intervenes when a position’s whole reason to exist has
+          broken.
+        </p>
+      </div>
+    </Fragment>
+
+    <!-- ══ BOOKS ═════════════════════════════════════════════════════════ -->
+    <Fragment slot="books">
+      <p class="mb-4 max-w-3xl text-sm leading-relaxed text-text-muted">
+        Nine books run the same engine at different intensities. Eight are simulated; exactly one
+        holds real money, and it is capped so tightly that its worst case is a rounding error. The
+        ladder exists so an idea can be measured at three risk settings simultaneously instead of
+        being argued about.
+      </p>
+      <div class="overflow-x-auto rounded-xl border border-border bg-bg-elevated/40">
+        <table class="w-full border-collapse text-sm">
+          <thead>
+            <tr class="text-left font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+              <th scope="col" class="px-4 py-2.5 font-medium">Book</th>
+              <th scope="col" class="px-4 py-2.5 font-medium">Kind</th>
+              <th scope="col" class="px-4 py-2.5 text-right font-medium">Equity</th>
+              <th scope="col" class="px-4 py-2.5 text-right font-medium">Max / name</th>
+              <th scope="col" class="px-4 py-2.5 text-right font-medium">Slots</th>
+              <th scope="col" class="px-4 py-2.5 text-right font-medium">Risk / trade</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              BOOKS.map((b) => (
+                <>
+                  <tr class="border-t border-border/70">
+                    <td class="whitespace-nowrap px-4 py-2.5 font-medium text-text">{b.name}</td>
+                    <td class="px-4 py-2.5">
+                      <span
+                        class={
+                          'whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] uppercase ring-1 ring-inset ' +
+                          kindTone[b.kind]
+                        }
+                      >
+                        {kindLabel[b.kind]}
+                      </span>
+                    </td>
+                    <td class="px-4 py-2.5 text-right font-mono tabular-nums text-text-muted">
+                      {b.equity}
+                    </td>
+                    <td class="px-4 py-2.5 text-right font-mono tabular-nums text-text-muted">
+                      {b.maxName}
+                    </td>
+                    <td class="px-4 py-2.5 text-right font-mono tabular-nums text-text-muted">
+                      {b.slots}
+                    </td>
+                    <td class="px-4 py-2.5 text-right font-mono tabular-nums text-text-muted">
+                      {b.risk}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colspan="6" class="px-4 pb-3 text-xs leading-relaxed text-text-subtle">
+                      {b.note}
+                    </td>
+                  </tr>
+                </>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="mb-2.5 mt-8 font-mono text-xs uppercase tracking-wider text-text-subtle">
+        The intensity ladder
+      </h3>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {
+          [
+            {
+              n: 'Core',
+              c: 'cat-1',
+              rows: [
+                ['Universe floor', '$500M cap'],
+                ['STRONG BUY at', '75'],
+                ['Risk / trade', '1.0%'],
+                ['Max / name', '5%'],
+                ['Time limit', '25 sessions'],
+                ['Regime brake', 'full'],
+              ],
+            },
+            {
+              n: 'Mild',
+              c: 'cat-2',
+              rows: [
+                ['Universe floor', '$150M cap'],
+                ['STRONG BUY at', '71'],
+                ['Risk / trade', '1.5%'],
+                ['Max / name', '6.5%'],
+                ['Time limit', '35 sessions'],
+                ['Regime brake', '0.75'],
+              ],
+            },
+            {
+              n: 'Aggressive',
+              c: 'cat-3',
+              rows: [
+                ['Universe floor', '$50M cap'],
+                ['STRONG BUY at', '68'],
+                ['Risk / trade', '2.0%'],
+                ['Max / name', '8%'],
+                ['Time limit', '45 sessions'],
+                ['Regime brake', '0.5'],
+              ],
+            },
+          ].map((t) => (
+            <div class="rounded-xl border border-border bg-bg-elevated/40 p-4">
+              <div class={`font-mono text-xs uppercase tracking-wider text-${t.c}`}>{t.n}</div>
+              <dl class="mt-2.5 space-y-1 font-mono text-[11px]">
+                {t.rows.map(([k, v]) => (
+                  <div class="flex justify-between gap-3">
+                    <dt class="text-text-subtle">{k}</dt>
+                    <dd class="tabular-nums text-text-muted">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ))
+        }
+      </div>
+    </Fragment>
+
+    <!-- ══ SCORING ═══════════════════════════════════════════════════════ -->
+    <Fragment slot="scoring">
+      <h3 class="font-mono text-xs uppercase tracking-wider text-text-subtle">
+        The composite · 100 points
+      </h3>
+      <p class="mt-2 max-w-3xl text-sm leading-relaxed text-text-muted">
+        Every name in the universe gets one number. Five factors make up the 100, then a set of
+        bounded tilts adjust it. The result is clamped to 0–100 so the action cutoffs stay
+        calibrated.
+      </p>
+      <ScoreWeights factors={SCORE_FACTORS} tilts={SCORE_TILTS} />
+
+      <h3 class="mb-2.5 mt-8 font-mono text-xs uppercase tracking-wider text-text-subtle">
+        What the score turns into
+      </h3>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div class="rounded-xl border border-gain/30 bg-gain/[0.06] p-4">
+          <div class="font-mono text-sm text-gain">STRONG BUY</div>
+          <p class="mt-1 font-mono text-xs text-text-muted">score ≥ 75</p>
+          <p class="mt-1.5 text-xs leading-relaxed text-text-muted">
+            And the setup must be a pullback, trending, deep pullback or breakout. A high score with
+            an overbought setup does not qualify.
+          </p>
+        </div>
+        <div class="rounded-xl border border-border bg-bg-elevated/40 p-4">
+          <div class="font-mono text-sm text-text">BUY</div>
+          <p class="mt-1 font-mono text-xs text-text-muted">score ≥ 60</p>
+          <p class="mt-1.5 text-xs leading-relaxed text-text-muted">
+            Anything not flagged overbought. Below 50 the name is dropped entirely.
+          </p>
+        </div>
+        <div class="rounded-xl border border-warning/30 bg-warning/[0.06] p-4">
+          <div class="font-mono text-sm text-warning">Forced to WATCH</div>
+          <p class="mt-1 font-mono text-xs text-text-muted">earnings ≤ 5 days</p>
+          <p class="mt-1.5 text-xs leading-relaxed text-text-muted">
+            No new size into a binary event, whatever the score says. Names up more than 2,000% in a
+            year are rejected outright.
+          </p>
+        </div>
+      </div>
+
+      <h3 class="mb-2.5 mt-8 font-mono text-xs uppercase tracking-wider text-text-subtle">
+        Relative strength, the way it is actually computed
+      </h3>
+      <div class="rounded-xl border border-border bg-bg-elevated/40 p-5">
+        <p
+          class="overflow-x-auto rounded-lg border border-border bg-bg/60 px-4 py-3 font-mono text-sm text-text"
+        >
+          RS<sub>raw</sub> = 0.40·resid(3M−1M) + 0.30·resid(6M−1M) + 0.30·resid(12M−1M)
+        </p>
+        <ul class="mt-3 space-y-2 text-sm leading-relaxed text-text-muted">
+          <li>
+            <b class="text-text">resid</b> means the stock’s return minus <span class="font-mono"
+              >beta × SPY</span
+            > over the same window, with beta clipped to 0–3. A high-beta name that only rose because
+            the market rose no longer screens as strong.
+          </li>
+          <li>
+            <b class="text-text">Every window skips the most recent month.</b> Last month’s hottest names
+            mean-revert, so a signal ending today buys tops. This is the standard 12-1 momentum gap, applied
+            to the benchmark too so the residual stays honest.
+          </li>
+          <li>
+            The result is percentile-ranked <b class="text-text">1–99</b> across the universe. A name
+            missing any window is left unranked rather than zero-filled, which would bias everyone else’s
+            percentile.
+          </li>
+        </ul>
+      </div>
+
+      <h3 class="mb-2.5 mt-8 font-mono text-xs uppercase tracking-wider text-text-subtle">
+        The 8 trend criteria
+      </h3>
+      <ol class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {
+          [
+            'Price above the 50-day',
+            'Price above the 150-day',
+            'Price above the 200-day',
+            '50-day above the 150-day',
+            '150-day above the 200-day',
+            '200-day rising (EMA200 above SMA200)',
+            'Within 25% of the 52-week high and 25% above the low',
+            'Relative strength ≥ 70',
+          ].map((c, i) => (
+            <li class="flex items-baseline gap-3 rounded-lg border border-border bg-bg-elevated/40 px-3 py-2">
+              <span class="font-mono text-xs text-text-subtle tabular-nums">{i + 1}</span>
+              <span class="text-sm text-text-muted">{c}</span>
+            </li>
+          ))
+        }
+      </ol>
+      <p class="mt-2 text-xs text-text-subtle">
+        All eight is a textbook Stage-2 uptrend. Seven is strong. The count scales linearly into its
+        30 points.
+      </p>
+
+      <h3 class="mb-2.5 mt-8 font-mono text-xs uppercase tracking-wider text-text-subtle">
+        Crypto runs a different clock
+      </h3>
+      <div class="rounded-xl border border-border bg-bg-elevated/40 p-5">
+        <p
+          class="overflow-x-auto rounded-lg border border-border bg-bg/60 px-4 py-3 font-mono text-sm text-text"
+        >
+          RS<sub>raw</sub> = 0.45·(1W−BTC) + 0.40·(1M−BTC) + 0.15·(3M−BTC)
+        </p>
+        <p class="mt-3 text-sm leading-relaxed text-text-muted">
+          Crypto regimes turn over in weeks, not quarters, so the 6- and 12-month windows are
+          dropped entirely and everything is measured against BTC rather than SPY. The weights are
+          35 momentum / 25 trend / 15 strength / 15 setup / 10 volume, and BUY starts at 62 instead
+          of 60. Buying a low RSI with no uptrend earns almost nothing on purpose — mean reversion
+          does not work here, momentum does.
+        </p>
+      </div>
+    </Fragment>
+
+    <!-- ══ SIZING & RISK ═════════════════════════════════════════════════ -->
+    <Fragment slot="sizing">
+      <h3 class="font-mono text-xs uppercase tracking-wider text-text-subtle">
+        Size is derived from risk, never chosen
+      </h3>
+      <div class="mt-3 rounded-xl border border-border bg-bg-elevated/40 p-5">
+        <p
+          class="overflow-x-auto rounded-lg border border-border bg-bg/60 px-4 py-3 font-mono text-sm text-text"
+        >
+          shares = (equity × risk% × regime × drawdown_scalar) ÷ (entry − stop)
+        </p>
+        <p class="mt-3 text-sm leading-relaxed text-text-muted">
+          Every position is sized so the loss at its stop is the same fraction of the book —
+          <b class="text-text">1% for core</b>. A wide-stop name therefore gets fewer shares than a
+          tight-stop one automatically. The stop distance <em>is</em> the risk measure; no ATR proxy stands
+          in for it.
+        </p>
+        <p class="mt-3 text-sm leading-relaxed text-text-muted">
+          That number is then cut by whichever of three ceilings binds first: quarter-Kelly, the
+          per-name hard cap, and the regime scalar.
+        </p>
+      </div>
+
+      <h3 class="mb-2.5 mt-8 font-mono text-xs uppercase tracking-wider text-text-subtle">
+        Kelly, deliberately shrunk
+      </h3>
+      <div class="rounded-xl border border-border bg-bg-elevated/40 p-5">
+        <p
+          class="overflow-x-auto rounded-lg border border-border bg-bg/60 px-4 py-3 font-mono text-sm text-text"
+        >
+          f = (W·R − L) ÷ R, then × 0.25
+        </p>
+        <ul class="mt-3 space-y-2 text-sm leading-relaxed text-text-muted">
+          <li>
+            <b class="text-text">Quarter Kelly</b>, because momentum has negative skew and full
+            Kelly on a mis-estimated edge is ruinous.
+          </li>
+          <li>
+            <b class="text-text">R is a true R-multiple</b> — average winner-R over average loser-R, not
+            a ratio of raw percentages. A 10% gain risking 5% is +2R; risking 12% it is +0.8R.
+          </li>
+          <li>
+            <b class="text-text">The win rate is shrunk toward 50%</b> with a Beta(10,10) prior:
+            <span class="font-mono">(W·n + 10) ÷ (n + 20)</span>. At 40 trades an observed 65% is
+            pulled to about 60%. Below 20 finalized trades the estimate is not used at all.
+          </li>
+        </ul>
+      </div>
+
+      <h3 class="mb-2.5 mt-8 font-mono text-xs uppercase tracking-wider text-text-subtle">
+        Market regime scales everything
+      </h3>
+      <div class="rounded-xl border border-border bg-bg-elevated/40 p-5">
+        <p class="text-sm leading-relaxed text-text-muted">
+          Exposure is the <b class="text-text">lower</b> of a discrete bucket and a continuous curve,
+          so it eases down as conditions worsen instead of lurching at a threshold.
+        </p>
+        <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div class="rounded-lg border border-border px-3 py-2">
+            <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+              Volatility
+            </div>
+            <p class="mt-1 font-mono text-xs text-text-muted">1.0 at VIX ≤18 → 0.30 at VIX ≥32</p>
+          </div>
+          <div class="rounded-lg border border-border px-3 py-2">
+            <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+              Term structure
+            </div>
+            <p class="mt-1 font-mono text-xs text-text-muted">
+              ×1.0 → ×0.75 as VIX passes 3-month VIX
+            </p>
+          </div>
+          <div class="rounded-lg border border-border px-3 py-2">
+            <div class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+              Breadth
+            </div>
+            <p class="mt-1 font-mono text-xs text-text-muted">
+              0.5 at 30% above the 200-day → 1.0 at 55%
+            </p>
+          </div>
+        </div>
+        <p class="mt-3 text-sm leading-relaxed text-text-muted">
+          The three multiply, clamp to 0.25–1.00, and are then floored by the bucket: risk-on 1.0,
+          cautious 0.5, risk-off 0.25. A cross-asset overlay on yields, credit and the dollar can
+          tighten this further but is never allowed to add risk.
+        </p>
+      </div>
+
+      <h3 class="mb-2.5 mt-8 font-mono text-xs uppercase tracking-wider text-text-subtle">
+        The hard rails
+      </h3>
+      <p class="mb-3 max-w-3xl text-sm leading-relaxed text-text-muted">
+        These are checked in code before any order reaches a broker. The AI cannot argue with them,
+        raise them, or route around them. De-risking is never blocked — only new risk is.
+      </p>
+      <ul class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {
+          RAILS.map(([what, limit, konst]) => (
+            <li class="flex items-baseline justify-between gap-3 rounded-lg border border-border bg-bg-elevated/40 px-3 py-2.5">
+              <span class="min-w-0">
+                <span class="text-sm text-text">{what}</span>
+                <span class="block font-mono text-[10px] text-text-subtle">{konst}</span>
+              </span>
+              <span class="shrink-0 text-right font-mono text-xs text-loss">{limit}</span>
+            </li>
+          ))
+        }
+      </ul>
+    </Fragment>
+
+    <!-- ══ EXITS ═════════════════════════════════════════════════════════ -->
+    <Fragment slot="exits">
+      <h3 class="font-mono text-xs uppercase tracking-wider text-text-subtle">
+        Everything in multiples of R
+      </h3>
+      <p class="mt-2 max-w-3xl text-sm leading-relaxed text-text-muted">
+        <b class="text-text">R is the entry risk</b> — the distance from entry to the original stop. Expressing
+        every rule in R makes them comparable across names: +2R means the same thing on a volatile microcap
+        and a mega-cap, even though the percentages differ wildly.
+      </p>
+      <ExitLadderDiagram />
+
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {
+          [
+            {
+              t: 'Stop hit',
+              d: 'Closes at a slipped, gap-aware fill — not the stop price, which would flatter the record. Requires two consecutive breaching ticks so one bad print cannot clip a position.',
+            },
+            {
+              t: '+1R · breakeven',
+              d: 'The stop jumps to entry. Below this point it never moves at all, so a new position gets full room and loss aversion cannot clip a winner early.',
+            },
+            {
+              t: 'Above +1R · trail',
+              d: 'The stop follows the high watermark, clamped to 4–8% for stocks and 6–12% for crypto. Monotone: it only ever moves up.',
+            },
+            {
+              t: '+2R · sell half',
+              d: 'Half the position is sold mechanically and the rest keeps trailing. This is how a few big winners pay for many small losers.',
+            },
+            {
+              t: 'Time barrier',
+              d: 'Fires only if the trade never reached breakeven by its deadline — 25 trading sessions for stocks, 12 calendar days for crypto. It cuts dead money, not a basing winner.',
+            },
+            {
+              t: 'Take profit',
+              d: 'Only for bracket-style playground portfolios: sells the whole position at the target, with the same two-tick confirmation as a stop.',
+            },
+          ].map((x) => (
+            <div class="rounded-xl border border-border bg-bg-elevated/40 p-4">
+              <div class="font-mono text-sm text-text">{x.t}</div>
+              <p class="mt-1.5 text-xs leading-relaxed text-text-muted">{x.d}</p>
+            </div>
+          ))
+        }
+      </div>
+
+      <h3 class="mb-2.5 mt-8 font-mono text-xs uppercase tracking-wider text-text-subtle">
+        The modern exit stack · trial #53
+      </h3>
+      <div class="rounded-xl border border-cat-2/30 bg-cat-2/[0.06] p-5">
+        <p class="text-sm leading-relaxed text-text-muted">
+          The legacy rule left a dead zone: a trade with a 10% stop could be up 9% with its full
+          entry risk still on. Across 462 evaluated signals, <b class="text-text"
+            >27% peaked at least 5% ahead and still closed negative</b
+          >. The mild book and every playground portfolio now run a replacement stack, with core and
+          aggressive held back as controls.
+        </p>
+        <dl class="mt-4 space-y-2.5">
+          <div>
+            <dt class="font-mono text-xs text-text">Breakeven arms earlier</dt>
+            <dd class="text-xs leading-relaxed text-text-muted">
+              At whichever comes first: +1R, or a gain of max(5%, one ATR). The floor sits half an
+              ATR <em>below</em> entry so an ordinary daily wiggle cannot tag it.
+            </dd>
+          </div>
+          <div>
+            <dt class="font-mono text-xs text-text">Profit ratchet</dt>
+            <dd class="text-xs leading-relaxed text-text-muted">
+              Once the peak gain reaches 8%, the stop never sits below entry plus half the peak
+              gain. A real winner can give back at most half its best, never all of it.
+            </dd>
+          </div>
+          <div>
+            <dt class="font-mono text-xs text-text">Chandelier trail</dt>
+            <dd class="text-xs leading-relaxed text-text-muted">
+              Three ATRs from the peak, replacing a trail width that was previously an accident of
+              how wide the entry stop happened to be.
+            </dd>
+          </div>
+        </dl>
+      </div>
+
+      <p class="mt-4 text-xs leading-relaxed text-text-subtle">
+        Fills are modelled with slippage rather than assumed perfect: 8 basis points on liquid
+        stocks, 20 on microcaps, 25 on crypto. The paper books are meant to be believable, not
+        flattering.
+      </p>
+    </Fragment>
+
+    <!-- ══ PROOF ═════════════════════════════════════════════════════════ -->
+    <Fragment slot="proof">
+      <h3 class="font-mono text-xs uppercase tracking-wider text-text-subtle">
+        The decision test — is the AI worth it?
+      </h3>
+      <div class="mt-3 rounded-xl border border-border-strong bg-bg-elevated/60 p-5">
+        <p class="max-w-3xl text-sm leading-relaxed text-text-muted">
+          A $50,000 control book runs beside the AI book with <b class="text-text"
+            >the same capital, the same universe and the same exits</b
+          >. The only difference is that it buys every STRONG BUY mechanically and applies no
+          judgment at all.
+        </p>
+        <p
+          class="mt-3 overflow-x-auto rounded-lg border border-border bg-bg/60 px-4 py-3 font-mono text-sm text-text"
+        >
+          AI edge = AI book return − systematic book return
+        </p>
+        <p class="mt-3 max-w-3xl text-sm leading-relaxed text-text-muted">
+          A positive edge means the AI’s selectivity is adding something. A negative edge means it
+          is overthinking and the right move is to buy everything the Scanner finds. It is a live
+          scoreboard rather than an opinion, and it is the number on the trader deck.
+        </p>
+      </div>
+
+      <h3 class="mb-2.5 mt-8 font-mono text-xs uppercase tracking-wider text-text-subtle">
+        The go-live gate
+      </h3>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div class="rounded-xl border border-border bg-bg-elevated/40 p-4">
+          <div class="font-mono text-sm text-text">Deflated Sharpe &gt; 0.95</div>
+          <p class="mt-1.5 text-xs leading-relaxed text-text-muted">
+            Ordinary Sharpe flatters a strategy that was selected from many trials. The deflated
+            version discounts for how many variants were tried, so it is much harder to fake.
+          </p>
+        </div>
+        <div class="rounded-xl border border-border bg-bg-elevated/40 p-4">
+          <div class="font-mono text-sm text-text">At least 40 closed trades</div>
+          <p class="mt-1.5 text-xs leading-relaxed text-text-muted">
+            Both conditions must hold at once. Passing the trade count while failing the statistic
+            is still a closed gate.
+          </p>
+        </div>
+      </div>
+
+      <h3 class="mb-2.5 mt-8 font-mono text-xs uppercase tracking-wider text-text-subtle">
+        The learning layer
+      </h3>
+      <div class="rounded-xl border border-border bg-bg-elevated/40 p-5">
+        <p class="max-w-3xl text-sm leading-relaxed text-text-muted">
+          A LightGBM re-ranker retrains from scratch on every scan over the most recent 300
+          finalized signals, predicting <span class="font-mono">alpha_20d</span> — excess return against
+          SPY over the following 20 trading sessions.
+        </p>
+        <ul class="mt-3 space-y-2 text-sm leading-relaxed text-text-muted">
+          <li>
+            <b class="text-text">Purged walk-forward validation</b>, three folds with a five-day gap
+            between train and test. Random splits leak the future into the past on overlapping
+            outcome windows.
+          </li>
+          <li>
+            <b class="text-text">It runs in shadow first.</b> The model scores picks but changes nothing
+            until it clears both a sample-size floor and a hit-rate gate on held-out folds.
+          </li>
+          <li>
+            <b class="text-text">No stale model files.</b> Retraining takes a fraction of a second, so
+            there is never a model on disk that disagrees with the journal.
+          </li>
+        </ul>
+      </div>
+
+      <div class="mt-4 rounded-xl border border-gain/25 bg-gain/[0.05] p-5">
+        <p class="max-w-3xl text-sm leading-relaxed text-text-muted">
+          The through-line: <b class="text-text"
+            >every judgment in this system is either bounded by code or measured against a control</b
+          >. The AI gets to be wrong. It does not get to be wrong expensively, and it does not get
+          to be wrong invisibly.
+        </p>
+      </div>
+    </Fragment>
+  </DeckTabs>
+</AdminShell>

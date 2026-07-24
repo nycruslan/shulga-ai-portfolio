@@ -1,0 +1,93 @@
+---
+// The composite score, as a 100-point stacked bar plus the bonus/penalty tilts.
+//
+// The weights are props rather than hardcoded markup so the page can pass the
+// real numbers from one place; if the engine is re-weighted, the picture moves
+// with the table beside it instead of quietly disagreeing with it.
+interface Factor {
+  label: string;
+  pts: number;
+  slot: number;
+  note: string;
+}
+interface Tilt {
+  label: string;
+  pts: string;
+  note: string;
+  bad?: boolean;
+}
+interface Props {
+  factors: Factor[];
+  tilts: Tilt[];
+}
+const { factors, tilts } = Astro.props;
+
+const total = factors.reduce((a, f) => a + f.pts, 0);
+// Running offset so each segment starts where the previous one ended.
+let acc = 0;
+const segs = factors.map((f) => {
+  const start = acc;
+  acc += f.pts;
+  return { ...f, start, width: f.pts };
+});
+---
+
+<figure class="not-prose my-6">
+  <div
+    class="flex h-9 w-full overflow-hidden rounded-lg border border-border"
+    role="img"
+    aria-label={`Composite score weights out of ${total} points: ${factors.map((f) => `${f.label} ${f.pts}`).join(', ')}.`}
+  >
+    {
+      segs.map((s) => (
+        <div
+          class="flex items-center justify-center border-r border-bg/40 last:border-r-0"
+          style={`width:${(s.width / total) * 100}%;background:color-mix(in srgb, var(--color-cat-${s.slot}) 28%, transparent)`}
+        >
+          <span class="font-mono text-[11px] tabular-nums text-text">{s.pts}</span>
+        </div>
+      ))
+    }
+  </div>
+
+  <dl class="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+    {
+      factors.map((f) => (
+        <div class="flex items-baseline gap-2.5">
+          <span
+            class="mt-1.5 inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
+            style={`background:color-mix(in srgb, var(--color-cat-${f.slot}) 60%, transparent)`}
+            aria-hidden="true"
+          />
+          <div class="min-w-0">
+            <dt class="text-sm text-text">
+              {f.label} <span class="font-mono text-text-subtle">· {f.pts} pts</span>
+            </dt>
+            <dd class="text-xs leading-relaxed text-text-muted">{f.note}</dd>
+          </div>
+        </div>
+      ))
+    }
+  </dl>
+
+  <p class="mt-4 font-mono text-xs uppercase tracking-wider text-text-subtle">
+    Then these tilts apply
+  </p>
+  <ul class="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+    {
+      tilts.map((t) => (
+        <li class="flex items-baseline justify-between gap-3 rounded-lg border border-border bg-bg-elevated/40 px-3 py-2">
+          <span class="min-w-0">
+            <span class="text-sm text-text">{t.label}</span>
+            <span class="block text-xs leading-relaxed text-text-muted">{t.note}</span>
+          </span>
+          <span
+            class={'shrink-0 font-mono text-sm tabular-nums ' + (t.bad ? 'text-loss' : 'text-gain')}
+          >
+            {t.pts}
+          </span>
+        </li>
+      ))
+    }
+  </ul>
+</figure>

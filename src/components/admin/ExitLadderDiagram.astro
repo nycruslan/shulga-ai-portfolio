@@ -1,0 +1,177 @@
+---
+// The R-multiple exit ladder, drawn to scale on its own axis.
+//
+// R is the entry risk: entry price minus the original stop. Everything the
+// monitor does is expressed in multiples of R, which is why a chart with R on
+// the y-axis explains the rules better than prose can.
+---
+
+<figure class="not-prose my-6">
+  <svg
+    viewBox="0 0 880 340"
+    class="w-full"
+    role="img"
+    aria-label="The exit ladder in R-multiples. R is entry risk, the distance from entry to the original stop. Below +1R the stop never moves, so a new position gets full room. At +1R the stop jumps to breakeven and the trade becomes free. Above +1R a trailing stop follows the peak at 4 to 8 percent for stocks. At +2R the monitor sells half automatically. If the position has not reached +1R by its deadline, 25 trading days for stocks, it is closed as dead money."
+  >
+    <defs>
+      <marker
+        id="tick"
+        viewBox="0 0 10 10"
+        refX="9"
+        refY="5"
+        markerWidth="5"
+        markerHeight="5"
+        orient="auto"
+      >
+        <path d="M0 0 L10 5 L0 10 z" fill="var(--color-text-subtle)"></path>
+      </marker>
+    </defs>
+
+    <!-- y axis: R multiples -->
+    <line class="axis" x1="92" y1="24" x2="92" y2="286"></line>
+    <g class="ytick">
+      <line x1="86" y1="52" x2="92" y2="52"></line><text x="78" y="56">+3R</text>
+      <line x1="86" y1="104" x2="92" y2="104"></line><text x="78" y="108">+2R</text>
+      <line x1="86" y1="156" x2="92" y2="156"></line><text x="78" y="160">+1R</text>
+      <line x1="86" y1="208" x2="92" y2="208"></line><text x="78" y="212">entry</text>
+      <line x1="86" y1="260" x2="92" y2="260"></line><text x="78" y="264">−1R</text>
+    </g>
+
+    <!-- reference lines -->
+    <g class="ref">
+      <line x1="92" y1="208" x2="856" y2="208"></line>
+      <line x1="92" y1="260" x2="856" y2="260" class="stopline"></line>
+    </g>
+    <text class="reflabel" x="852" y="202">entry</text>
+    <text class="reflabel stop" x="852" y="274">original stop = 1R below entry</text>
+
+    <!-- price path -->
+    <path
+      class="price"
+      d="M110 250 L 170 236 L 230 214 L 290 190 L 350 160 L 410 150 L 470 120 L 530 100 L 590 78 L 650 92 L 710 70 L 770 96 L 830 118"
+    ></path>
+
+    <!-- the stop's own path: flat, then breakeven, then trailing -->
+    <path class="stop-path" d="M110 260 L 350 260"></path>
+    <path class="stop-path" d="M350 260 L 350 208 L 470 208"></path>
+    <path class="stop-path" d="M470 208 L 530 172 L 590 150 L 650 150 L 710 128 L 770 128 L 830 128"
+    ></path>
+
+    <!-- zone shading -->
+    <g class="zone">
+      <rect x="110" y="24" width="240" height="262" rx="4"></rect>
+      <rect x="350" y="24" width="120" height="262" rx="4"></rect>
+      <rect x="470" y="24" width="360" height="262" rx="4"></rect>
+    </g>
+
+    <!-- events -->
+    <g class="evt">
+      <circle cx="350" cy="160" r="5"></circle>
+      <circle cx="530" cy="100" r="5"></circle>
+    </g>
+
+    <!-- zone captions -->
+    <g class="zonelabel">
+      <text x="230" y="306">stop never moves</text>
+      <text x="410" y="306">stop → breakeven</text>
+      <text x="650" y="306">trail the peak · half sold at +2R</text>
+    </g>
+    <g class="zonesub">
+      <text x="230" y="320">full room, no early clipping</text>
+      <text x="410" y="320">the trade is now free</text>
+      <text x="650" y="320">stock trail clamped 4–8% below the high</text>
+    </g>
+
+    <!-- Callouts sit ABOVE-LEFT of their marker and are end-anchored: the price
+         line rises to the right, so a left-anchored label runs straight into it. -->
+    <g class="callout">
+      <text x="343" y="140">+1R: breakeven</text>
+      <text x="523" y="76">+2R: sell half</text>
+    </g>
+  </svg>
+  <figcaption class="mt-2 text-xs leading-relaxed text-text-subtle">
+    The blue line is price; the amber line is where the stop actually sits. It is monotone by
+    construction — the stop only ever moves up, never down, so a position can give back part of a
+    gain but can never turn a protected winner back into a full loss.
+  </figcaption>
+</figure>
+
+<style>
+  .axis {
+    stroke: var(--color-border-strong);
+    stroke-width: 1;
+  }
+  .ytick line {
+    stroke: var(--color-border-strong);
+  }
+  .ytick text {
+    fill: var(--color-text-subtle);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-anchor: end;
+  }
+  .ref line {
+    stroke: var(--color-border);
+    stroke-width: 1;
+  }
+  .ref .stopline {
+    stroke: color-mix(in srgb, var(--color-loss) 40%, transparent);
+    stroke-dasharray: 4 4;
+  }
+  .reflabel {
+    fill: var(--color-text-subtle);
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    text-anchor: end;
+  }
+  .reflabel.stop {
+    fill: color-mix(in srgb, var(--color-loss) 80%, var(--color-text-subtle));
+  }
+  .price {
+    fill: none;
+    stroke: var(--color-cat-5);
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+  .stop-path {
+    fill: none;
+    stroke: var(--color-warning);
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+  .zone rect {
+    fill: color-mix(in srgb, var(--color-text) 3%, transparent);
+    stroke: var(--color-border);
+  }
+  .zone rect:nth-child(2) {
+    fill: color-mix(in srgb, var(--color-warning) 6%, transparent);
+  }
+  .zone rect:nth-child(3) {
+    fill: color-mix(in srgb, var(--color-gain) 5%, transparent);
+  }
+  .evt circle {
+    fill: var(--color-bg);
+    stroke: var(--color-gain);
+    stroke-width: 2.5;
+  }
+  .zonelabel text {
+    fill: var(--color-text);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    text-anchor: middle;
+  }
+  .zonesub text {
+    fill: var(--color-text-subtle);
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    text-anchor: middle;
+  }
+  .callout text {
+    fill: var(--color-gain);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-anchor: end;
+  }
+</style>

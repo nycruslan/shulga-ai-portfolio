@@ -1,0 +1,203 @@
+---
+// Hand-authored diagrams for the system reference.
+//
+// Inline SVG rather than Mermaid on purpose: these paint with the page's own
+// design tokens (so they follow the theme and never drift from it), ship zero
+// JavaScript, cause no layout shift, and stay sharp at any size. Mermaid would
+// have meant ~500KB of runtime and a second, unrelated visual language.
+//
+// Every diagram is `role="img"` with a full `aria-label`, and the same
+// information is available as text in the surrounding prose — a diagram is
+// never the only way to learn something here.
+---
+
+<!-- ══ 1. Control flow: who decides what ══════════════════════════════════ -->
+<figure class="not-prose my-6">
+  <svg
+    viewBox="0 0 880 300"
+    class="w-full"
+    role="img"
+    aria-label="Control flow. The Scanner (code) ranks the market and produces a shopping list. The AI reads it and writes down decisions but never touches money. The Guard (code) checks each order and can reject the AI. The Monitor (code) then owns every exit, running 24/7 without the AI."
+  >
+    <defs>
+      <marker
+        id="ar"
+        viewBox="0 0 10 10"
+        refX="9"
+        refY="5"
+        markerWidth="6"
+        markerHeight="6"
+        orient="auto"
+      >
+        <path d="M0 0 L10 5 L0 10 z" fill="var(--color-text-subtle)"></path>
+      </marker>
+      <marker
+        id="ar-warn"
+        viewBox="0 0 10 10"
+        refX="9"
+        refY="5"
+        markerWidth="6"
+        markerHeight="6"
+        orient="auto"
+      >
+        <path d="M0 0 L10 5 L0 10 z" fill="var(--color-warning)"></path>
+      </marker>
+    </defs>
+
+    <!-- lanes -->
+    <g class="lane">
+      <rect x="8" y="8" width="196" height="284" rx="12"></rect>
+      <rect x="228" y="8" width="196" height="284" rx="12"></rect>
+      <rect x="448" y="8" width="196" height="284" rx="12"></rect>
+      <rect x="668" y="8" width="204" height="284" rx="12"></rect>
+    </g>
+    <g class="lane-label">
+      <text x="106" y="30">1 · SCANNER</text>
+      <text x="326" y="30">2 · AI</text>
+      <text x="546" y="30">3 · GUARD</text>
+      <text x="770" y="30">4 · MONITOR</text>
+    </g>
+    <g class="lane-sub">
+      <text x="106" y="46">code</text>
+      <text x="326" y="46">judgment</text>
+      <text x="546" y="46">code · can reject</text>
+      <text x="770" y="46">code · 24/7</text>
+    </g>
+
+    <!-- nodes -->
+    <g class="node code">
+      <rect x="28" y="70" width="156" height="52" rx="8"></rect>
+      <text x="106" y="92">Scan ~2,500</text>
+      <text x="106" y="108">liquid US names</text>
+    </g>
+    <g class="node code">
+      <rect x="28" y="140" width="156" height="66" rx="8"></rect>
+      <text x="106" y="162">Score 0–100</text>
+      <text x="106" y="178">tag STRONG BUY</text>
+      <text x="106" y="194">/ BUY / WATCH</text>
+    </g>
+    <g class="node code">
+      <rect x="28" y="224" width="156" height="52" rx="8"></rect>
+      <text x="106" y="246">Attach stop</text>
+      <text x="106" y="262">+ suggested size</text>
+    </g>
+
+    <g class="node ai">
+      <rect x="248" y="70" width="156" height="66" rx="8"></rect>
+      <text x="326" y="92">Read picks, news,</text>
+      <text x="326" y="108">positions, memory</text>
+      <text x="326" y="124">and past lessons</text>
+    </g>
+    <g class="node ai">
+      <rect x="248" y="154" width="156" height="66" rx="8"></rect>
+      <text x="326" y="176">Write decisions</text>
+      <text x="326" y="192">with reasoning</text>
+      <text x="326" y="208">— no money moves</text>
+    </g>
+
+    <g class="node risk">
+      <rect x="468" y="70" width="156" height="118" rx="8"></rect>
+      <text x="546" y="92">Real price?</text>
+      <text x="546" y="110">Enough cash?</text>
+      <text x="546" y="128">≤5% per name?</text>
+      <text x="546" y="146">Sector cap? Heat?</text>
+      <text x="546" y="164">Daily loss? Market open?</text>
+      <text x="546" y="182">Earnings ≤5d?</text>
+    </g>
+    <g class="node reject">
+      <rect x="468" y="206" width="156" height="46" rx="8"></rect>
+      <text x="546" y="228">REJECTED —</text>
+      <text x="546" y="244">AI cannot override</text>
+    </g>
+
+    <g class="node risk">
+      <rect x="688" y="70" width="164" height="46" rx="8"></rect>
+      <text x="770" y="92">Stop hit</text>
+      <text x="770" y="108">→ sell</text>
+    </g>
+    <g class="node risk">
+      <rect x="688" y="126" width="164" height="46" rx="8"></rect>
+      <text x="770" y="148">+1R → breakeven,</text>
+      <text x="770" y="164">then trail up</text>
+    </g>
+    <g class="node risk">
+      <rect x="688" y="182" width="164" height="46" rx="8"></rect>
+      <text x="770" y="204">+2R → sell half</text>
+      <text x="770" y="220">automatically</text>
+    </g>
+    <g class="node risk">
+      <rect x="688" y="238" width="164" height="46" rx="8"></rect>
+      <text x="770" y="260">No progress by</text>
+      <text x="770" y="276">deadline → time exit</text>
+    </g>
+
+    <!-- connectors -->
+    <g class="link">
+      <path d="M184 172 H 240" marker-end="url(#ar)"></path>
+      <path d="M404 187 H 460" marker-end="url(#ar)"></path>
+      <path d="M624 129 H 680" marker-end="url(#ar)"></path>
+    </g>
+    <text class="edge" x="212" y="164">list</text>
+    <text class="edge" x="432" y="179">note</text>
+    <text class="edge" x="652" y="121">filled</text>
+  </svg>
+  <figcaption class="mt-2 text-xs text-text-subtle">
+    The AI occupies exactly one lane, and it is the only lane that cannot move money.
+  </figcaption>
+</figure>
+
+<style>
+  .lane rect {
+    fill: color-mix(in srgb, var(--color-bg-elevated) 60%, transparent);
+    stroke: var(--color-border);
+  }
+  .lane-label text {
+    fill: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-anchor: middle;
+  }
+  .lane-sub text {
+    fill: var(--color-text-subtle);
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    text-anchor: middle;
+  }
+  .node rect {
+    stroke-width: 1;
+  }
+  .node text {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    text-anchor: middle;
+    fill: var(--color-text);
+  }
+  .node.code rect {
+    fill: color-mix(in srgb, var(--color-cat-5) 12%, transparent);
+    stroke: color-mix(in srgb, var(--color-cat-5) 45%, transparent);
+  }
+  .node.ai rect {
+    fill: color-mix(in srgb, var(--color-cat-3) 12%, transparent);
+    stroke: color-mix(in srgb, var(--color-cat-3) 45%, transparent);
+  }
+  .node.risk rect {
+    fill: color-mix(in srgb, var(--color-loss) 10%, transparent);
+    stroke: color-mix(in srgb, var(--color-loss) 40%, transparent);
+  }
+  .node.reject rect {
+    fill: color-mix(in srgb, var(--color-warning) 12%, transparent);
+    stroke: color-mix(in srgb, var(--color-warning) 45%, transparent);
+  }
+  .link path {
+    fill: none;
+    stroke: var(--color-text-subtle);
+    stroke-width: 1.25;
+  }
+  .edge {
+    fill: var(--color-text-subtle);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    text-anchor: middle;
+  }
+</style>
