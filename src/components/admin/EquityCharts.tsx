@@ -54,7 +54,7 @@ const CURVE_META: Record<string, { label: string; family: Family; crypto: boolea
 
 const CURVE_ORDER = Object.keys(CURVE_META);
 
-type Series = {
+export type Series = {
   key: string;
   label: string;
   color: string;
@@ -67,7 +67,7 @@ type Series = {
   last: number | null;
 };
 
-type Model = {
+export type Model = {
   axis: string[];
   series: Series[];
   min: number;
@@ -80,11 +80,38 @@ const META_FALLBACK = (key: string) => ({
   crypto: /crypto|crp/.test(key),
 });
 
+/** How a caller names and colours one series. */
+export type SeriesMeta = { label: string; color: string; dashed?: boolean };
+export type MetaFor = (key: string, index: number) => SeriesMeta;
+
+// Default: the trader books, coloured by strategy family.
+const traderMetaFor: MetaFor = (key) => {
+  const m = CURVE_META[key] ?? META_FALLBACK(key);
+  return { label: m.label, color: FAMILY_COLOR[m.family], dashed: m.crypto };
+};
+
+/**
+ * Slots for callers whose series have no inherent families — the playground's
+ * portfolios, for instance. Six is the whole validated budget; a caller with
+ * more than six should fold or facet rather than inventing a seventh hue.
+ */
+export const CAT_SLOTS = [
+  'var(--color-cat-1)',
+  'var(--color-cat-2)',
+  'var(--color-cat-3)',
+  'var(--color-cat-4)',
+  'var(--color-cat-5)',
+  'var(--color-cat-6)',
+];
+
 /**
  * Aligns every curve onto one time axis and indexes each to 100 at its own
  * first published point, then derives the single y-domain all views share.
  */
-export function buildModel(equityCurve: Record<string, EquityPoint[]>): Model {
+export function buildModel(
+  equityCurve: Record<string, EquityPoint[]>,
+  metaFor: MetaFor = traderMetaFor,
+): Model {
   const entries = Object.entries(equityCurve)
     .filter(([, pts]) => (pts?.length ?? 0) > 0)
     .sort(([a], [b]) => {
@@ -101,8 +128,8 @@ export function buildModel(equityCurve: Record<string, EquityPoint[]>): Model {
   ].sort();
   const slot = new Map(axis.map((t, i) => [t, i]));
 
-  const series: Series[] = entries.map(([key, pts]) => {
-    const meta = CURVE_META[key] ?? META_FALLBACK(key);
+  const series: Series[] = entries.map(([key, pts], seriesIdx) => {
+    const meta = metaFor(key, seriesIdx);
     const clean = pts.filter((p) => p.t && p.equity != null);
     const base = clean[0]?.equity ?? null;
 
@@ -148,8 +175,8 @@ export function buildModel(equityCurve: Record<string, EquityPoint[]>): Model {
     return {
       key,
       label: meta.label,
-      color: FAMILY_COLOR[meta.family],
-      dashed: meta.crypto,
+      color: meta.color,
+      dashed: !!meta.dashed,
       values,
       bench,
       last: lastIdx === -1 ? null : (values[lastIdx] as number),
@@ -233,8 +260,17 @@ function ticks(min: number, max: number, count = 4): number[] {
 
 // ── Unified deck chart ───────────────────────────────────────────────────────
 
-export function EquityDeck({ equityCurve }: { equityCurve: Record<string, EquityPoint[]> }) {
-  const model = useMemo(() => buildModel(equityCurve), [equityCurve]);
+export function EquityDeck({
+  equityCurve,
+  metaFor,
+  title = 'Equity · all books · indexed to 100 at start',
+}: {
+  equityCurve: Record<string, EquityPoint[]>;
+  /** Override naming/colour when the series aren't the trader's books. */
+  metaFor?: MetaFor;
+  title?: string;
+}) {
+  const model = useMemo(() => buildModel(equityCurve, metaFor), [equityCurve, metaFor]);
   const [cursor, setCursor] = useState<number | null>(null);
   const [asTable, setAsTable] = useState(false);
   // Was the crosshair last moved by keyboard? Only then is a live region
@@ -316,7 +352,7 @@ export function EquityDeck({ equityCurve }: { equityCurve: Record<string, Equity
     <div className="rounded-xl border border-border bg-bg-elevated/40 p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 id={titleId} className="font-mono text-xs uppercase tracking-wider text-text-subtle">
-          Equity · all books · indexed to 100 at start
+          {title}
         </h3>
         <button
           type="button"
@@ -603,6 +639,61 @@ export function BookCurves({ equityCurve }: { equityCurve: Record<string, Equity
 }
 
 const MINI = { w: 300, h: 96, pad: 6 };
+
+/**
+ * A bare sparkline drawn on a domain shared with its siblings. Callers that
+ * already render their own heading (the playground's portfolio cards) use this
+ * instead of BookCurve so the amplitude of one card is comparable with the next
+ * — the whole reason a per-card chart is worth showing at all.
+ */
+export function MiniSeriesChart({
+  series,
+  model,
+  height = 40,
+}: {
+  series: Series;
+  model: Model;
+  height?: number;
+}) {
+  const { min, max, axis } = model;
+  const n = axis.length;
+  const W = MINI.w;
+  const H = height;
+  const pad = 3;
+  const x = (i: number) => pad + (n < 2 ? 0 : (i / (n - 1)) * (W - pad * 2));
+  const y = (v: number) => H - pad - ((v - min) / (max - min || 1)) * (H - pad * 2);
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="mt-2 w-full"
+      role="img"
+      aria-label={
+        series.last == null
+          ? `${series.label}: no history yet`
+          : `${series.label}: ${fmtIdx(series.last)} since start, on the same scale as the other portfolios`
+      }
+    >
+      <line
+        x1={pad}
+        x2={W - pad}
+        y1={y(100)}
+        y2={y(100)}
+        stroke="var(--color-border-strong)"
+        strokeWidth="1"
+        vectorEffect="non-scaling-stroke"
+      />
+      <path
+        d={pathFor(series.values, x, y)}
+        fill="none"
+        stroke={series.color}
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
+  );
+}
 
 function BookCurve({ s, model }: { s: Series; model: Model }) {
   const { min, max, axis } = model;

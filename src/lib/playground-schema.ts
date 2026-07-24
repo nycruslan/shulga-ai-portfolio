@@ -136,3 +136,40 @@ export function describeParams(p: PlaygroundParams): string {
   bits.push(`${p.time_limit_days}d time limit`);
   return bits.join(' · ') + '. Exits are mechanical (stop / trail / ratchet / +2R partial / time).';
 }
+
+/**
+ * The same config as scannable label/value pairs.
+ *
+ * `describeParams` is the right shape for the create form, where a sentence
+ * reads as "here is what you are about to build". On a card in a grid it turns
+ * into a wall of prose you have to parse word by word just to compare two
+ * portfolios, so the cards use this instead.
+ */
+export function paramsSpec(p: PlaygroundParams, capital: number): Array<[string, string]> {
+  const rule =
+    p.buy_rule.type === 'all'
+      ? 'every strong buy'
+      : p.buy_rule.type === 'top_n'
+        ? `top ${p.buy_rule.n} by score`
+        : `score ≥ ${p.buy_rule.min_score}`;
+
+  const spec: Array<[string, string]> = [
+    ['capital', `$${capital.toLocaleString()}`],
+    ['buys', rule + (p.include_plain_buys ? ' + plain' : '')],
+    ['size', `${p.size_pct}%`],
+    ['max open', String(p.max_positions)],
+  ];
+  if (p.sector_cap != null) spec.push(['sector cap', String(p.sector_cap)]);
+  spec.push([
+    'stop',
+    p.stop.mode === 'fixed'
+      ? `fixed ${p.stop.pct}%`
+      : p.stop.mode === 'cap'
+        ? `capped ${p.stop.pct}%`
+        : 'structural',
+  ]);
+  spec.push(['take profit', p.take_profit_pct != null ? `+${p.take_profit_pct}%` : 'ride']);
+  spec.push(['time limit', `${p.time_limit_days}d`]);
+  spec.push(['exits', p.exit_mode === 'bracket' ? 'simple bracket' : 'managed']);
+  return spec;
+}

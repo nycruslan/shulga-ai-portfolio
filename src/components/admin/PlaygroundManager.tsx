@@ -2,14 +2,23 @@ import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import {
   describeParams,
+  paramsSpec,
   paramsSchema,
   LIMITS,
   type PlaygroundConfig,
   type PlaygroundParams,
   type PlaygroundStatus,
 } from '../../lib/playground-schema';
-import { DataTable } from './TraderTables';
+import { DataTable, InfoTip } from './TraderTables';
 import TradeLifecycle, { captureTone, fmtPx, type TradeEvent } from './TradeLifecycle';
+import {
+  EquityDeck,
+  MiniSeriesChart,
+  buildModel,
+  CAT_SLOTS,
+  type EquityPoint,
+  type MetaFor,
+} from './EquityCharts';
 
 // Trade Playground: create paper portfolios with your own rules, watch them
 // race. Config truth is Turso (written here); results arrive through the
@@ -68,15 +77,24 @@ const BTN =
 const HELP = 'mt-1 text-[10px] leading-snug text-text-subtle';
 
 const num = 'whitespace-nowrap font-mono tabular-nums';
+// P&L polarity on the reserved gain/loss tokens, matching the trader console.
 const pnlTone = (n?: number | null) =>
   n == null
     ? 'text-text-muted'
     : n > 0.05
-      ? 'text-emerald-300'
+      ? 'text-gain'
       : n < -0.05
-        ? 'text-rose-300'
+        ? 'text-loss'
         : 'text-text-muted';
 const pct = (n?: number | null) => (n == null ? '—' : (n > 0 ? '+' : '') + n + '%');
+
+// Direction as a glyph, not an emoji: emoji render differently per platform and
+// announce as their CLDR name ("large green circle"), which tells a screen
+// reader user nothing. Thresholds match pnlTone so the mark and the colour can
+// never disagree — the old emoji used a different cutoff and did exactly that.
+const dirMark = (n?: number | null) => (n == null ? '·' : n > 0.05 ? '▲' : n < -0.05 ? '▼' : '–');
+const dirLabel = (n?: number | null) =>
+  n == null ? 'no data' : n > 0.05 ? 'up' : n < -0.05 ? 'down' : 'flat';
 
 const openColumns: ColumnDef<OpenRow, unknown>[] = [
   {
@@ -132,11 +150,10 @@ const closedColumns: ColumnDef<ClosedRow, unknown>[] = [
     meta: { className: 'whitespace-nowrap text-text font-medium' },
     cell: ({ row }) => (
       <span>
-        {(row.original.return_pct ?? 0) > 0.05
-          ? '🟢'
-          : (row.original.return_pct ?? 0) < -2
-            ? '🔴'
-            : '🟡'}{' '}
+        <span className={pnlTone(row.original.return_pct)} aria-hidden="true">
+          {dirMark(row.original.return_pct)}
+        </span>{' '}
+        <span className="sr-only">{dirLabel(row.original.return_pct)}, </span>
         {row.original.symbol}
       </span>
     ),
@@ -158,7 +175,17 @@ const closedColumns: ColumnDef<ClosedRow, unknown>[] = [
   {
     accessorKey: 'capture_pct',
     header: 'Kept',
-    meta: { align: 'right', className: num },
+    meta: {
+      align: 'right',
+      className: num,
+      helpLabel: 'What Kept measures',
+      help: (
+        <>
+          Exit quality: the share of the peak gain the exit actually kept. Around 100 means it sold
+          near the top. Zero or below means the trade round-tripped.
+        </>
+      ),
+    },
     cell: ({ row }) => (
       <span className={captureTone(row.original.peak_pct, row.original.capture_pct)}>
         {row.original.capture_pct == null ? '—' : row.original.capture_pct + '%'}
@@ -275,46 +302,24 @@ function PortfolioTrades({ name, result }: { name: string; result?: Result }) {
 }
 
 const statusTone: Record<string, string> = {
-  active: 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/25',
-  paused: 'bg-amber-500/10 text-amber-300 ring-amber-500/25',
+  active: 'bg-gain/10 text-gain ring-gain/25',
+  paused: 'bg-warning/10 text-warning ring-warning/25',
   archived: 'bg-white/[0.04] text-text-subtle ring-border-strong',
 };
 
-function Sparkline({ curve }: { curve: Result['curve'] }) {
-  const pts = (curve ?? []).filter((p): p is { t: string; equity: number } => p?.equity != null);
-  if (pts.length < 2) return null;
-  const W = 220;
-  const H = 40;
-  const vals = pts.map((p) => p.equity);
-  const min = Math.min(...vals);
-  const max = Math.max(...vals);
-  const span = max - min || 1;
-  const d = vals
-    .map(
-      (v, i) =>
-        `${i === 0 ? 'M' : 'L'} ${((i / (vals.length - 1)) * W).toFixed(1)} ${(H - 3 - ((v - min) / span) * (H - 6)).toFixed(1)}`,
-    )
-    .join(' ');
-  const up = vals[vals.length - 1] >= vals[0];
-  return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      className="mt-2 h-10 w-full"
-      preserveAspectRatio="none"
-      role="img"
-      aria-label={`equity ${up ? 'up' : 'down'} since inception`}
-    >
-      <path
-        d={d}
-        fill="none"
-        stroke={up ? '#7af2a0' : '#fb7185'}
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
+// Portfolios have no inherent families, so identity is a fixed slot.
+//
+// The slot is keyed to the PORTFOLIO, never to its index among the drawn
+// series: a portfolio that isn't chartable yet still holds its colour, so a
+// second one becoming chartable can't repaint the first. Colour following rank
+// instead of entity is the classic recolor-on-filter mistake — a reader who
+// learned "Min profit is teal" must not be told otherwise tomorrow.
+const portfolioMetaFor =
+  (names: Map<string, string>, slots: Map<string, number>): MetaFor =>
+  (key) => ({
+    label: names.get(key) ?? key,
+    color: CAT_SLOTS[(slots.get(key) ?? 0) % CAT_SLOTS.length],
+  });
 
 export default function PlaygroundManager({
   configs: initialConfigs = [],
@@ -349,6 +354,53 @@ export default function PlaygroundManager({
   const [timeLimit, setTimeLimit] = useState(25);
 
   const byId = useMemo(() => new Map(results.map((r) => [r.id, r])), [results]);
+
+  // Two-step archive. Archiving pulls a portfolio out of the race, and the
+  // button sits next to Pause and Edit, so a stray click is easy. The second
+  // click is the confirmation — cheaper and more predictable than a modal.
+  const [confirmArchive, setConfirmArchive] = useState<string | null>(null);
+
+  const visible = configs.filter((c) => c.status !== 'archived');
+  const archived = configs.filter((c) => c.status === 'archived');
+
+  // ONE shared model across every portfolio: the same y-domain feeds the
+  // comparison chart and each card's sparkline. Racing portfolios that each
+  // auto-scaled to their own min/max looked identical no matter how differently
+  // they actually performed — which defeats the entire point of the page.
+  // Indexed to 100 so portfolios with different starting capital compare fairly.
+  const curves = useMemo(() => {
+    const out: Record<string, EquityPoint[]> = {};
+    for (const c of visible) {
+      const pts = byId.get(c.id)?.curve ?? [];
+      const clean = pts.filter((p) => p?.t && p.equity != null) as EquityPoint[];
+      if (clean.length >= 2) out[c.id] = clean;
+    }
+    return out;
+  }, [visible, byId]);
+
+  const names = useMemo(() => new Map(configs.map((c) => [c.id, c.name])), [configs]);
+  // Slot per portfolio, fixed by position in the visible list.
+  const slots = useMemo(() => new Map(visible.map((c, i) => [c.id, i])), [visible]);
+  const metaFor = useMemo(() => portfolioMetaFor(names, slots), [names, slots]);
+
+  // "Has a curve" has to be judged AFTER the model collapses each day to its
+  // close, not on the raw feed. A portfolio created today publishes several
+  // intraday snapshots that all carry the same date, so it looks like four
+  // points and charts as one — which drew an empty plot instead of falling
+  // through to the "not enough history" copy.
+  const racingCurves = useMemo(() => {
+    const probe = buildModel(curves, metaFor);
+    const ok = new Set(
+      probe.series.filter((s) => s.values.filter((v) => v != null).length >= 2).map((s) => s.key),
+    );
+    return Object.fromEntries(Object.entries(curves).filter(([k]) => ok.has(k)));
+  }, [curves, metaFor]);
+
+  // One model for everything that draws, so the deck and every card sparkline
+  // share a single y-domain.
+  const model = useMemo(() => buildModel(racingCurves, metaFor), [racingCurves, metaFor]);
+  const seriesById = useMemo(() => new Map(model.series.map((s) => [s.key, s])), [model]);
+  const racing = model.series.length;
 
   const params: PlaygroundParams = useMemo(
     () => ({
@@ -417,7 +469,7 @@ export default function PlaygroundManager({
     });
   }
 
-  async function create(e: React.FormEvent) {
+  async function create(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
     setNote(null);
@@ -466,9 +518,6 @@ export default function PlaygroundManager({
     }
   }
 
-  const visible = configs.filter((c) => c.status !== 'archived');
-  const archived = configs.filter((c) => c.status === 'archived');
-
   return (
     <div className="mt-6 grid gap-4">
       <div className="flex items-center justify-between gap-3">
@@ -486,7 +535,7 @@ export default function PlaygroundManager({
         <p
           role="status"
           aria-live="polite"
-          className={'text-xs ' + (note.error ? 'text-rose-300' : 'text-emerald-300')}
+          className={'text-xs ' + (note.error ? 'text-loss' : 'text-gain')}
         >
           {note.text}
         </p>
@@ -504,7 +553,12 @@ export default function PlaygroundManager({
               </label>
               <input
                 id="pg-name"
+                name="portfolio-name"
                 className={INPUT}
+                // Not a personal field — keep password managers and autofill
+                // out of it, and stop the browser suggesting unrelated names.
+                autoComplete="off"
+                spellCheck={false}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Top 5 · tight stops"
@@ -521,6 +575,7 @@ export default function PlaygroundManager({
                 id="pg-capital"
                 className={INPUT}
                 type="number"
+                inputMode="decimal"
                 min={LIMITS.capital.min}
                 max={LIMITS.capital.max}
                 step={1000}
@@ -559,7 +614,7 @@ export default function PlaygroundManager({
                   type="checkbox"
                   checked={plainBuys}
                   onChange={(e) => setPlainBuys(e.target.checked)}
-                  className="mt-0.5 accent-emerald-400"
+                  className="mt-0.5 accent-[var(--color-accent)]"
                 />
                 <span>
                   Include plain BUYs (second tier, scores ~80–90). Keeps the portfolio active on
@@ -611,6 +666,7 @@ export default function PlaygroundManager({
                 id="pg-size"
                 className={INPUT}
                 type="number"
+                inputMode="decimal"
                 min={LIMITS.sizePct.min}
                 max={LIMITS.sizePct.max}
                 step={0.5}
@@ -632,6 +688,7 @@ export default function PlaygroundManager({
                 id="pg-max"
                 className={INPUT}
                 type="number"
+                inputMode="decimal"
                 min={LIMITS.maxPositions.min}
                 max={LIMITS.maxPositions.max}
                 value={maxPositions}
@@ -647,6 +704,7 @@ export default function PlaygroundManager({
                 id="pg-sector"
                 className={INPUT}
                 type="number"
+                inputMode="decimal"
                 min={LIMITS.sectorCap.min}
                 max={LIMITS.sectorCap.max}
                 value={sectorCap}
@@ -662,6 +720,7 @@ export default function PlaygroundManager({
                 id="pg-days"
                 className={INPUT}
                 type="number"
+                inputMode="decimal"
                 min={LIMITS.timeLimitDays.min}
                 max={LIMITS.timeLimitDays.max}
                 value={timeLimit}
@@ -740,6 +799,7 @@ export default function PlaygroundManager({
                 id="pg-tp"
                 className={INPUT}
                 type="number"
+                inputMode="decimal"
                 min={LIMITS.takeProfitPct.min}
                 max={LIMITS.takeProfitPct.max}
                 step={0.1}
@@ -752,7 +812,7 @@ export default function PlaygroundManager({
                 {exitMode === 'managed' ? ' (the trail rides winners)' : ''}.
               </p>
               {takeProfit !== '' && takeProfit < 3 && (
-                <p className="mt-1 text-[10px] leading-snug text-amber-300">
+                <p className="mt-1 text-[11px] leading-snug text-warning">
                   ⚠ Targets under ~3% mostly sell daily noise: expect many tiny wins and capped
                   winners. Your experiment to run — that's what the playground is for.
                 </p>
@@ -780,47 +840,70 @@ export default function PlaygroundManager({
         </form>
       )}
 
+      {/* The race itself. Every portfolio on one shared, indexed axis — the
+          only view that answers "which rule set is actually winning". */}
+      {racing >= 2 && (
+        <EquityDeck
+          equityCurve={racingCurves}
+          metaFor={metaFor}
+          title={`Race · ${racing} portfolios · indexed to 100 at each start`}
+        />
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2">
         {visible.map((c) => {
           const r = byId.get(c.id);
           const hasData = r && r.equity != null;
           const selected = selectedId === c.id;
+          const series = seriesById.get(c.id);
           return (
-            <div
+            // A section, not a click target. The card used to be a <div
+            // onClick>: unreachable by keyboard, invisible to assistive tech,
+            // and it swallowed every click — you could not select the config
+            // text without toggling the panel. The disclosure now lives
+            // entirely in the header button, which was already here.
+            <section
               key={c.id}
-              onClick={() => setSelectedId((cur) => (cur === c.id ? null : c.id))}
+              aria-labelledby={`pg-card-${c.id}`}
               className={
-                'cursor-pointer rounded-xl border p-4 transition-colors ' +
+                // @container: the spec grid below reflows on the CARD's width,
+                // not the viewport's. An open card spans the grid while its
+                // neighbours stay half-width, so a viewport breakpoint would
+                // get one of the two wrong every time.
+                '@container rounded-xl border p-4 transition-colors ' +
+                // An open card spans the grid so its trade tables get the full
+                // width; at half a column they would scroll horizontally.
                 (selected
-                  ? 'border-text/30 bg-bg-elevated/70 ring-1 ring-text/20'
-                  : 'border-border bg-bg-elevated/40 hover:bg-bg-elevated/60')
+                  ? 'border-text/30 bg-bg-elevated/70 ring-1 ring-text/20 sm:col-span-2'
+                  : 'border-border bg-bg-elevated/40')
               }
             >
               <div className="flex items-center justify-between gap-2">
                 <button
                   type="button"
+                  id={`pg-card-${c.id}`}
                   aria-expanded={selected}
-                  aria-label={(selected ? 'Hide' : 'Show') + ' trades for ' + c.name}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedId((cur) => (cur === c.id ? null : c.id));
-                  }}
-                  className="flex min-w-0 items-center gap-1.5 text-left"
+                  aria-controls={`pg-trades-${c.id}`}
+                  onClick={() => setSelectedId((cur) => (cur === c.id ? null : c.id))}
+                  className="flex min-w-0 items-center gap-1.5 rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
                 >
                   <span
                     aria-hidden="true"
                     className={
-                      'text-[10px] transition-transform ' +
+                      'text-xs transition-transform ' +
                       (selected ? 'rotate-90 text-text' : 'text-text-subtle')
                     }
                   >
                     ▶
                   </span>
-                  <span className="truncate text-sm font-medium text-text">{c.name}</span>
+                  <span className="truncate text-sm font-medium text-text hover:underline">
+                    {c.name}
+                  </span>
+                  <span className="sr-only">{selected ? ' — hide trades' : ' — show trades'}</span>
                 </button>
                 <span
                   className={
-                    'shrink-0 rounded-full px-2 py-0.5 text-[9px] uppercase ring-1 ring-inset ' +
+                    'shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase ring-1 ring-inset ' +
                     (statusTone[c.status] ?? statusTone.paused)
                   }
                 >
@@ -831,26 +914,38 @@ export default function PlaygroundManager({
               {hasData ? (
                 <>
                   <div className="mt-1.5 flex items-baseline gap-2">
-                    <span className="text-xl font-medium tabular-nums text-text">
+                    {/* Proportional digits on the headline figure; tabular-nums
+                        makes a large standalone number read loose. */}
+                    <span className="text-xl font-medium text-text">
                       ${Math.round(r.equity!).toLocaleString()}
                     </span>
-                    <span
-                      className={
-                        'font-mono text-xs tabular-nums ' +
-                        ((r.pnl_pct ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300')
-                      }
-                    >
+                    <span className={'font-mono text-xs tabular-nums ' + pnlTone(r.pnl_pct)}>
                       {(r.pnl_pct ?? 0) >= 0 ? '+' : ''}
                       {r.pnl_pct}%
                     </span>
-                    <span className="ml-auto font-mono text-[10px] tabular-nums text-text-subtle">
+                    <span className="ml-auto font-mono text-[11px] tabular-nums text-text-subtle">
                       {r.open_n ?? 0} open · {r.closed_n ?? 0} closed
                     </span>
                   </div>
-                  <Sparkline curve={r.curve} />
-                  <div className="mt-1 flex gap-3 font-mono text-[10px] tabular-nums text-text-subtle">
+                  {series ? (
+                    <MiniSeriesChart series={series} model={model} />
+                  ) : (
+                    <p className="mt-2 text-[11px] text-text-subtle">
+                      Equity is charted daily — the curve starts once this portfolio has closed a
+                      second day.
+                    </p>
+                  )}
+                  <div className="mt-1 flex gap-3 font-mono text-[11px] tabular-nums text-text-subtle">
                     {r.win_rate != null && <span>{r.win_rate}% win</span>}
-                    {r.capture_avg != null && <span>kept {r.capture_avg}% of peaks</span>}
+                    {r.capture_avg != null && (
+                      <span>
+                        kept {r.capture_avg}% of peaks
+                        <InfoTip label="What kept-of-peaks means">
+                          Average share of each winner&rsquo;s peak gain that the exit actually
+                          kept. Low numbers mean the rules are giving gains back.
+                        </InfoTip>
+                      </span>
+                    )}
                   </div>
                   {r.scan_today?.day && (
                     <p className="mt-1.5 text-[11px] text-text-muted">
@@ -868,78 +963,87 @@ export default function PlaygroundManager({
                 </p>
               )}
 
-              <p className="mt-2 text-[11px] leading-relaxed text-text-subtle">
-                ${c.capital.toLocaleString()} ·{' '}
-                {(() => {
-                  // safeParse: a malformed stored config must degrade one line,
-                  // never crash the card grid.
-                  const parsed = paramsSchema.safeParse(c.params);
-                  return parsed.success ? describeParams(parsed.data) : 'custom parameters';
-                })()}
-              </p>
+              {/* The rules as a scannable spec. As one prose sentence you had
+                  to read both cards end to end to spot the one knob that
+                  differs — which is the only thing a race card is for. */}
+              {(() => {
+                // safeParse: a malformed stored config must degrade to one
+                // line, never crash the card grid.
+                const parsed = paramsSchema.safeParse(c.params);
+                if (!parsed.success)
+                  return (
+                    <p className="mt-2 text-[11px] text-text-subtle">
+                      Custom parameters (stored config does not match the current schema).
+                    </p>
+                  );
+                return (
+                  <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 border-t border-border pt-2.5 font-mono text-[11px] @2xl:grid-cols-4">
+                    {paramsSpec(parsed.data, c.capital).map(([k, v]) => (
+                      <div key={k} className="flex justify-between gap-2">
+                        <dt className="truncate text-text-subtle">{k}</dt>
+                        <dd className="shrink-0 tabular-nums text-text-muted">{v}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                );
+              })()}
 
-              <div className="mt-3 flex gap-2">
-                {c.status === 'active' ? (
-                  <button
-                    type="button"
-                    className={BTN}
-                    disabled={busy}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setStatus(c.id, 'paused');
-                    }}
-                  >
-                    Pause buys
-                  </button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={BTN}
+                  disabled={busy}
+                  onClick={() => setStatus(c.id, c.status === 'active' ? 'paused' : 'active')}
+                >
+                  {c.status === 'active' ? 'Pause buys' : 'Resume'}
+                </button>
+                <button
+                  type="button"
+                  className={BTN}
+                  disabled={busy}
+                  onClick={() => prefillFrom(c)}
+                >
+                  Edit
+                </button>
+                {confirmArchive === c.id ? (
+                  <span className="inline-flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-1.5 text-xs text-warning transition-colors hover:bg-warning/15"
+                      disabled={busy}
+                      onClick={() => {
+                        setConfirmArchive(null);
+                        setStatus(c.id, 'archived');
+                      }}
+                    >
+                      Confirm archive
+                    </button>
+                    <button type="button" className={BTN} onClick={() => setConfirmArchive(null)}>
+                      Cancel
+                    </button>
+                  </span>
                 ) : (
                   <button
                     type="button"
                     className={BTN}
                     disabled={busy}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setStatus(c.id, 'active');
-                    }}
+                    onClick={() => setConfirmArchive(c.id)}
                   >
-                    Resume
+                    Archive
                   </button>
                 )}
-                <button
-                  type="button"
-                  className={BTN}
-                  disabled={busy}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    prefillFrom(c);
-                  }}
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className={BTN}
-                  disabled={busy}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setStatus(c.id, 'archived');
-                  }}
-                >
-                  Archive
-                </button>
-                <span className="ml-auto self-center text-[10px] text-text-subtle">
-                  {selected ? 'hide trades' : 'click for trades'}
-                </span>
               </div>
-            </div>
+
+              {/* The trades panel lives INSIDE its own card. It used to render
+                  after the entire grid, so opening the first card pushed its
+                  table below every other card. */}
+              <div id={`pg-trades-${c.id}`} hidden={!selected} className="mt-4">
+                {selected && <PortfolioTrades name={c.name} result={r} />}
+              </div>
+            </section>
           );
         })}
       </div>
-
-      {selectedId != null &&
-        (() => {
-          const c = configs.find((x) => x.id === selectedId);
-          return c ? <PortfolioTrades name={c.name} result={byId.get(c.id)} /> : null;
-        })()}
 
       {archived.length > 0 && (
         <details className="text-xs text-text-subtle">

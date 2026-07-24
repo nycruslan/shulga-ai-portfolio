@@ -24,17 +24,30 @@ const updated = snap?.generated_at ? relativeTime(snap.generated_at) : null;
   }
 
   <p class="mt-6 max-w-2xl text-sm leading-relaxed text-text-muted">
-    Spin up paper portfolios with your own rules and let them race. Every portfolio shops from the
-    same daily scan the real books use, buys deterministically (no AI, no quota), and gets the same
-    mechanical exits — stops, trailing, +2R partials, time limits — enforced by the live monitor.
-    Results update with the trader snapshot.
+    Paper portfolios with your own rules, racing each other. Every portfolio shops the same daily
+    scan the real books use and buys deterministically, so the only variable is the rule set.
+    <span class="text-text-subtle"
+      >Exits are always mechanical and enforced by the live monitor; results update with the trader
+      snapshot.</span
+    >
   </p>
 
   <PlaygroundManager client:load configs={configs} results={results} />
 
-  {/* Field guide — the "what exactly does each knob do" footer */}
-  <section class="mt-10 rounded-xl border border-border bg-bg-elevated/30 p-5">
-    <h2 class="font-mono text-[11px] uppercase tracking-wider text-text-subtle">Field guide</h2>
+  {
+    /* Field guide. Collapsed by default: every knob already carries its own help
+      text inside the form, so this is reference for when you want the full
+      story, not something that should push the portfolios off the screen. */
+  }
+  <details class="group mt-10 rounded-xl border border-border bg-bg-elevated/30 p-5">
+    <summary
+      class="cursor-pointer list-none font-mono text-xs uppercase tracking-wider text-text-subtle transition-colors hover:text-text"
+    >
+      <span aria-hidden="true" class="inline-block transition-transform group-open:rotate-90"
+        >▶</span
+      >
+      Field guide — what each knob does
+    </summary>
     <dl class="mt-3 grid gap-x-8 gap-y-3 text-xs leading-relaxed sm:grid-cols-2">
       <div>
         <dt class="font-medium text-text">Starting capital</dt>
@@ -100,5 +113,5 @@ const updated = snap?.generated_at ? relativeTime(snap.generated_at) : null;
         </dd>
       </div>
     </dl>
-  </section>
+  </details>
 </AdminShell>
