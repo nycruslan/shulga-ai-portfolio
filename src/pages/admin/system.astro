@@ -69,7 +69,7 @@ const SCORE_TILTS = [
   {
     label: 'Crowding fade',
     pts: '−6',
-    note: 'All three at once: +25% in a month, 3× volume, RSI ≥80. Herding, not accumulation.',
+    note: 'All three at once: +50% in a month, 3× volume, RSI ≥80. Herding, not accumulation.',
     bad: true,
   },
 ];
@@ -217,8 +217,8 @@ const RAILS = [
         <div class="font-mono text-xs uppercase tracking-wider text-cat-5">The Scanner</div>
         <p class="mt-1.5 text-sm text-text">Plain code</p>
         <p class="mt-1 text-xs leading-relaxed text-text-muted">
-          Scores ~2,500 liquid US names every morning and hands over a ranked shopping list with a
-          stop already attached to each one.
+          Pulls the whole liquid US market in one query — above $500M cap, 300k volume and $3 —
+          scores every name, and hands over a ranked list with a stop already attached.
         </p>
       </div>
       <div class="rounded-xl border border-cat-3/30 bg-cat-3/[0.07] p-4">
@@ -308,6 +308,51 @@ const RAILS = [
           broken.
         </p>
       </div>
+
+      <h3 class="mb-2.5 mt-8 font-mono text-xs uppercase tracking-wider text-text-subtle">
+        When it actually runs
+      </h3>
+      <p class="mb-3 max-w-3xl text-sm leading-relaxed text-text-muted">
+        There is no single “daily scan”. Each book has its own cadence on a 25-line crontab in
+        America/New_York, and the exit monitor is the one piece that never sleeps.
+      </p>
+      <div class="overflow-x-auto rounded-xl border border-border bg-bg-elevated/40">
+        <table class="w-full border-collapse text-sm">
+          <thead>
+            <tr class="text-left font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+              <th scope="col" class="px-4 py-2.5 font-medium">What</th>
+              <th scope="col" class="px-4 py-2.5 font-medium">When (ET)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              [
+                ['Core stock sessions', '09:15, 11:00, 14:00, 16:15 · weekdays'],
+                ['Core crypto sessions', '09:00 and 18:00 · every day'],
+                ['Systematic control', '09:50 · weekdays'],
+                ['Aggressive stock', 'hourly at :35, 09:35–15:35'],
+                ['Mild stock', 'hourly at :45, 09:45–15:45'],
+                ['Aggressive / mild crypto', 'every 4h and every 4h offset · around the clock'],
+                ['Playground portfolios', '10:05 buy run · 16:05 snapshot'],
+                ['Alpaca sweep', 'every 15 min, 10:00–15:00 + open and close'],
+                ['Dashboard publish', 'every 15 minutes'],
+                ['Exit monitor', 'always on — a daemon, not a cron job'],
+              ].map(([what, when]) => (
+                <tr class="border-t border-border/70">
+                  <td class="px-4 py-2.5 text-text">{what}</td>
+                  <td class="whitespace-nowrap px-4 py-2.5 font-mono text-xs text-text-muted">
+                    {when}
+                  </td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-2 text-xs leading-relaxed text-text-subtle">
+        The monitor being a long-running daemon rather than a scheduled job is the load-bearing
+        detail: a stop that only checked on a cron tick would miss the crash it exists to catch.
+      </p>
     </Fragment>
 
     <!-- ══ BOOKS ═════════════════════════════════════════════════════════ -->
@@ -628,9 +673,10 @@ const RAILS = [
           </div>
         </div>
         <p class="mt-3 text-sm leading-relaxed text-text-muted">
-          The three multiply, clamp to 0.25–1.00, and are then floored by the bucket: risk-on 1.0,
-          cautious 0.5, risk-off 0.25. A cross-asset overlay on yields, credit and the dollar can
-          tighten this further but is never allowed to add risk.
+          The three multiply and clamp to 0.25–1.00. The discrete bucket — risk-on 1.0, cautious
+          0.5, risk-off 0.25 — is then applied as a <b class="text-text">ceiling</b>, so the final
+          number is whichever of the two is lower. A cross-asset overlay on yields, credit and the
+          dollar can tighten it further but is never allowed to add risk.
         </p>
       </div>
 
@@ -640,6 +686,11 @@ const RAILS = [
       <p class="mb-3 max-w-3xl text-sm leading-relaxed text-text-muted">
         These are checked in code before any order reaches a broker. The AI cannot argue with them,
         raise them, or route around them. De-risking is never blocked — only new risk is.
+      </p>
+      <p class="mb-3 max-w-3xl text-xs leading-relaxed text-text-subtle">
+        Values shown are the <b class="text-text-muted">core stock book</b>. The ladder books carry
+        their own: aggressive allows 5 names per sector, and the systematic control book relaxes the
+        sector and heat caps entirely, since buying every signal is the whole point of a control.
       </p>
       <ul class="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {
