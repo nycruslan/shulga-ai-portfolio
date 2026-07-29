@@ -5,6 +5,11 @@ import { turso } from '../../lib/turso-client';
 import { listPlaygroundConfigs, readSnapshot, readTraderSnapshot } from '../../lib/turso';
 import { listProposals } from '../../lib/bridge/persistence/proposals';
 import { relativeTime } from '../../lib/relative-time';
+import { LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_URL } from 'astro:env/server';
+import { readTwinConfig, completeness } from '../../lib/twin-config';
+
+const twinConfigured = Boolean(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API_SECRET);
+const twinScore = twinConfigured ? completeness(await readTwinConfig()) : 0;
 
 // The owner hub: every admin feature as a card with a live stat, so a glance
 // tells you what needs attention. Middleware guarantees only the owner is here.
@@ -59,6 +64,17 @@ const features: Feature[] = [
       return n ? `${n} active portfolio${n === 1 ? '' : 's'}` : 'none yet — create one';
     })(),
     alert: false,
+  },
+  {
+    href: '/admin/twin',
+    label: 'Voice',
+    name: 'Twin',
+    desc: 'Talk to a realtime video avatar. Speech in, speech out, with a face.',
+    // Setup completeness, not liveness: whether a worker is registered is only
+    // knowable by dispatching, which would start a billable session just to
+    // draw a card.
+    stat: !twinConfigured ? 'not configured' : `${twinScore}/100 set up`,
+    alert: twinConfigured && twinScore < 50,
   },
   {
     href: '/admin/system',

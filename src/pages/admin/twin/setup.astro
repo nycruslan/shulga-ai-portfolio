@@ -1,0 +1,35 @@
+---
+export const prerender = false;
+import AdminShell from '../../../layouts/AdminShell.astro';
+import TwinSetup from '../../../components/admin/TwinSetup.tsx';
+import { readTwinConfig, completeness } from '../../../lib/twin-config';
+import { ANAM_API_KEY, ELEVENLABS_API_KEY } from 'astro:env/server';
+
+// Middleware guarantees only the owner reaches /admin/*.
+const config = await readTwinConfig();
+const score = completeness(config);
+---
+
+<AdminShell title="Twin setup">
+  <span slot="meta" class="text-text-subtle hidden font-mono text-xs sm:inline">
+    {score}/100
+  </span>
+
+  <div class="mb-2">
+    <div class="flex items-baseline gap-3">
+      <a href="/admin/twin" class="text-text-subtle hover:text-text font-mono text-xs">← console</a>
+    </div>
+    <h1 class="font-display mt-2 text-2xl" style="letter-spacing: -0.02em;">Twin setup</h1>
+    <p class="text-text-muted mt-1.5 max-w-2xl text-sm leading-relaxed">
+      A photo, a voice sample, and the facts that make it sound like you. Saved config is handed to
+      the agent when a session starts, so changes take effect on the next call with no restart.
+    </p>
+  </div>
+
+  <TwinSetup
+    client:only="react"
+    initial={config}
+    anamEnabled={Boolean(ANAM_API_KEY)}
+    elevenEnabled={Boolean(ELEVENLABS_API_KEY)}
+  />
+</AdminShell>

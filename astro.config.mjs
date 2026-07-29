@@ -48,6 +48,22 @@ export default defineConfig({
       BETTER_AUTH_URL: envField.string({ context: 'server', access: 'secret', optional: true }),
       OWNER_EMAIL: envField.string({ context: 'server', access: 'secret', optional: true }),
       ADMIN_ALLOW_SIGNUP: envField.string({ context: 'server', access: 'secret', optional: true }),
+
+      // Twin (optional). When all three are set, /admin/twin can open a
+      // realtime video-avatar session. The avatar and the LLM run in a
+      // separate Python agent worker registered with the same LiveKit
+      // project; this app only mints a room token and dispatches to it.
+      // Unset, the console reports "not configured" and nothing else changes.
+      LIVEKIT_URL: envField.string({ context: 'server', access: 'secret', optional: true }),
+      LIVEKIT_API_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
+      LIVEKIT_API_SECRET: envField.string({ context: 'server', access: 'secret', optional: true }),
+      // Must match AGENT_NAME in the worker. Defaults to 'my-agent'.
+      TWIN_AGENT_NAME: envField.string({ context: 'server', access: 'secret', optional: true }),
+      // Twin setup (/admin/twin/setup). ANAM_API_KEY creates the avatar from a
+      // photo; ELEVENLABS_API_KEY clones the voice. Each section of the
+      // configurator disables itself when its key is absent.
+      ANAM_API_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
+      ELEVENLABS_API_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
     },
   },
   vite: {
