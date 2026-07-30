@@ -265,6 +265,10 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
           crosshairMarkerVisible: false,
           priceFormat: { type: 'price', precision, minMove: px0 < 5 ? 0.0001 : 0.01 },
         });
+        // Span the FULL chart width, not just entry→exit: a same-day trade's
+        // entry and exit are a sliver apart in x, so a stop drawn only across
+        // that span renders as an illegible nub. Full-width reads as a level,
+        // matching the entry line. WithSteps puts the riser at the peak.
         const pts: { time: Time; value: number }[] = [];
         const addPt = (idx: number, value: number) => {
           const time = times[idx] as Time;
@@ -273,13 +277,12 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
             last.value = value; // same bar → keep the stepped value
           else pts.push({ time, value });
         };
-        addPt(entryIdx, initStop);
+        addPt(0, initStop);
         if (trailed && curStop != null) {
-          addPt(peakIdx, initStop); // hold init up to the peak
-          addPt(peakIdx, curStop); // …then step up (dedup overwrites, WithSteps draws the riser)
-          addPt(exitIdx, curStop);
+          addPt(peakIdx, curStop); // WithSteps holds init until the peak, then steps up
+          addPt(bars.length - 1, curStop);
         } else {
-          addPt(exitIdx, initStop);
+          addPt(bars.length - 1, initStop);
         }
         stopSeries.setData(pts);
       }
