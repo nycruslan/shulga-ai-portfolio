@@ -246,15 +246,19 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
         });
       }
 
-      // Stop: a STEPPED line. Flat at the initial stop, then a single step up to
-      // the current/exit stop around the peak — so a trailed exit reads as a
-      // staircase. (A true per-tick trajectory would need stop-move history;
-      // this two-level step is an honest summary of where the stop started and
-      // where it ended.)
+      // Stop: a STEPPED line reconstructing the trail. We know three things per
+      // trade: the initial stop, the current/exit stop, and the running high
+      // each bar. A trailing stop rides the running high at a fixed distance, so
+      // we back out that distance from the peak (peakHigh − currentStop) and
+      // draw stop[i] = clamp(runningHigh[i] − gap, init, current). The result is
+      // a real rising staircase: flat at init until the trail lifts off, rising
+      // with each new high, reaching the current stop exactly at the peak. This
+      // survives a recent peak (a single step at the peak would collapse to the
+      // right edge and look flat — the bug this replaces).
       const initStop = trade.init_stop ?? null;
       const curStop = trade.stop ?? null;
       const trailed = curStop != null && initStop != null && Math.abs(curStop - initStop) > 1e-9;
-      if (initStop) {
+      if (initStop != null) {
         const stopSeries = chart.addSeries(LineSeries, {
           color: C.stop,
           lineWidth: 2,
@@ -265,24 +269,17 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
           crosshairMarkerVisible: false,
           priceFormat: { type: 'price', precision, minMove: px0 < 5 ? 0.0001 : 0.01 },
         });
-        // Span the FULL chart width, not just entry→exit: a same-day trade's
-        // entry and exit are a sliver apart in x, so a stop drawn only across
-        // that span renders as an illegible nub. Full-width reads as a level,
-        // matching the entry line. WithSteps puts the riser at the peak.
+        const round = (v: number) => Math.round(v * 10000) / 10000;
+        const gap = trailed && curStop != null ? Math.max(0, bars[peakIdx].h - curStop) : 0;
         const pts: { time: Time; value: number }[] = [];
-        const addPt = (idx: number, value: number) => {
-          const time = times[idx] as Time;
-          const last = pts[pts.length - 1];
-          if (last && last.time === time)
-            last.value = value; // same bar → keep the stepped value
-          else pts.push({ time, value });
-        };
-        addPt(0, initStop);
-        if (trailed && curStop != null) {
-          addPt(peakIdx, curStop); // WithSteps holds init until the peak, then steps up
-          addPt(bars.length - 1, curStop);
-        } else {
-          addPt(bars.length - 1, initStop);
+        let runHigh = bars[entryIdx].h;
+        for (let i = 0; i < bars.length; i++) {
+          if (i >= entryIdx && i <= exitIdx) runHigh = Math.max(runHigh, bars[i].h);
+          let v = initStop;
+          if (trailed && curStop != null && i >= entryIdx) {
+            v = Math.min(curStop, Math.max(initStop, runHigh - gap));
+          }
+          pts.push({ time: times[i] as Time, value: round(v) });
         }
         stopSeries.setData(pts);
       }
