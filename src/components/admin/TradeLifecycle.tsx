@@ -8,12 +8,14 @@ import type {
 } from 'lightweight-charts';
 
 // Per-trade lifecycle chart on TradingView Lightweight Charts™ — the same
-// canvas engine real market UIs use, so the grammar is instantly readable:
-// BUY/SELL arrow markers on the price path, dashed/solid price lines for the
-// stops, a flagged peak, native crosshair with axis labels, and a live
-// readout that tracks the pointer. The library is dynamically imported inside
-// the effect: this component only mounts client-side on row expand, and the
-// canvas engine has no business in the SSR bundle.
+// canvas engine real market UIs use. Candlesticks (OHLC), so the wicks show the
+// intraday high/low where a stop actually fires; an ADAPTIVE interval, so a
+// same-day trade renders its real intraday path instead of collapsing onto one
+// daily bar; a STEPPED stop line, so the dynamic exit's ratchet is visible as a
+// staircase, not two flat lines. BUY/SELL arrows, a flagged peak, add/partial
+// markers, native crosshair, and a pointer readout complete the grammar. The
+// library is imported inside the effect: this only mounts client-side on row
+// expand, and the canvas engine has no business in the SSR bundle.
 
 export type TradeEvent = {
   kind?: 'add' | 'partial';
@@ -27,7 +29,7 @@ export type TradeFacts = {
   symbol: string;
   book?: string;
   opened_at?: string | null;
-  closed_at?: string | null; // absent → open trade, chart runs to today
+  closed_at?: string | null; // absent → open trade, chart runs to now
   entry?: number | null;
   exit?: number | null;
   init_stop?: number | null;
@@ -37,21 +39,29 @@ export type TradeFacts = {
   events?: TradeEvent[] | null; // scale-in adds (＋) + partial sells (½)
 };
 
-type Bars = { t: string[]; c: number[] };
+type Bar = { t: number; o: number; h: number; l: number; c: number };
+type ChartData = { interval: string; bars: Bar[] };
 
 // ── Pure helpers (unit-tested) ───────────────────────────────────────────────
 
-/** First bar index on/after an ISO date; -1 when none. */
-export function indexOnOrAfter(dates: string[], day?: string | null): number {
-  if (!day) return -1;
-  for (let i = 0; i < dates.length; i++) if (dates[i] >= day) return i;
+/** First index whose value is on/after `target`; -1 when none. Works for the
+ * sorted date-strings (event placement) and sorted timestamps alike. */
+export function indexOnOrAfter(
+  values: (string | number)[],
+  target?: string | number | null,
+): number {
+  if (target == null) return -1;
+  for (let i = 0; i < values.length; i++) if (values[i] >= target) return i;
   return -1;
 }
 
-/** Last bar index on/before an ISO date; -1 when none. */
-export function indexOnOrBefore(dates: string[], day?: string | null): number {
-  if (!day) return -1;
-  for (let i = dates.length - 1; i >= 0; i--) if (dates[i] <= day) return i;
+/** Last index whose value is on/before `target`; -1 when none. */
+export function indexOnOrBefore(
+  values: (string | number)[],
+  target?: string | number | null,
+): number {
+  if (target == null) return -1;
+  for (let i = values.length - 1; i >= 0; i--) if (values[i] <= target) return i;
   return -1;
 }
 
@@ -71,14 +81,22 @@ export function fmtPx(v?: number | null): string {
   return '$' + v.toLocaleString(undefined, { maximumFractionDigits: v < 5 ? 4 : 2 });
 }
 
+/** Bar timestamp → label. Intraday shows the clock; daily shows the date. */
+export function fmtBarTime(unixSec: number, intraday: boolean): string {
+  const d = new Date(unixSec * 1000);
+  const iso = d.toISOString();
+  return intraday ? `${iso.slice(5, 10)} ${iso.slice(11, 16)}` : iso.slice(0, 10);
+}
+
 // Site tokens on the dark surface (all ≥3:1 contrast, validator-checked).
 const C = {
-  line: '#7dd3fc',
-  fillTop: 'rgba(125, 211, 252, 0.22)',
-  fillBottom: 'rgba(125, 211, 252, 0.0)',
+  up: '#4ec98a',
+  down: '#f07878',
+  wickUp: 'rgba(78, 201, 138, 0.6)',
+  wickDown: 'rgba(240, 120, 120, 0.6)',
   buy: '#7af2a0',
   sell: '#fb7185',
-  stop: '#f07878',
+  stop: '#f0a878', // warm, distinct from the red down-candles it sits among
   peak: '#e2a04a',
   entryLine: '#8a8f98',
   grid: 'rgba(255, 255, 255, 0.06)',
@@ -87,7 +105,7 @@ const C = {
 };
 
 export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
-  const [bars, setBars] = useState<Bars | null>(null);
+  const [data, setData] = useState<ChartData | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const readoutRef = useRef<HTMLDivElement>(null);
@@ -100,8 +118,8 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
       ? Math.round((result / trade.peak_pct) * 100)
       : null;
 
-  // Fetch daily bars. No sync state reset needed: the parent keys this
-  // component per trade, so a different trade mounts fresh.
+  // Fetch bars. The parent keys this component per trade, so a different trade
+  // mounts fresh — no manual reset needed.
   useEffect(() => {
     let alive = true;
     const q = new URLSearchParams({ symbol: trade.symbol, crypto: isCrypto ? '1' : '0' });
@@ -110,9 +128,9 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
     fetch(`/admin/api/trade-chart?${q}`)
       .then(async (r) => {
         if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? `HTTP ${r.status}`);
-        return r.json() as Promise<Bars>;
+        return r.json() as Promise<ChartData>;
       })
-      .then((d) => alive && setBars(d))
+      .then((d) => alive && setData(d))
       .catch((e) => alive && setErr(e instanceof Error ? e.message : 'failed'));
     return () => {
       alive = false;
@@ -122,28 +140,55 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
   // Build the chart once bars land.
   useEffect(() => {
     const el = containerRef.current;
-    if (!el || !bars || bars.c.length < 2) return;
+    if (!el || !data || data.bars.length < 2) return;
+    const bars = data.bars;
+    const intraday = data.interval !== '1d';
 
     let chart: IChartApi | null = null;
-    let series: ISeriesApi<'Area'> | null = null;
+    let series: ISeriesApi<'Candlestick'> | null = null;
     let ro: ResizeObserver | null = null;
     let disposed = false;
 
     (async () => {
-      const { createChart, AreaSeries, createSeriesMarkers, LineStyle, ColorType, CrosshairMode } =
-        await import('lightweight-charts');
+      const {
+        createChart,
+        CandlestickSeries,
+        LineSeries,
+        createSeriesMarkers,
+        LineStyle,
+        LineType,
+        ColorType,
+        CrosshairMode,
+      } = await import('lightweight-charts');
       if (disposed || !containerRef.current) return;
 
-      const { t, c } = bars;
-      const entryIdx = Math.max(0, indexOnOrAfter(t, trade.opened_at));
+      const times = bars.map((b) => b.t);
+      const dates = bars.map((b) => new Date(b.t * 1000).toISOString().slice(0, 10));
+      const openSec = trade.opened_at ? Math.floor(Date.parse(trade.opened_at) / 1000) : null;
+      const closeSec = trade.closed_at ? Math.floor(Date.parse(trade.closed_at) / 1000) : null;
+
+      // Entry snaps to the first bar at/after the fill; exit to the last bar
+      // at/before the close. On an intraday chart these land on the real 10:05
+      // and same-day exit bars — the point of the whole rebuild.
+      const entryIdx = Math.max(0, indexOnOrAfter(times, openSec));
       const exitIdx = closed
-        ? Math.max(entryIdx, indexOnOrBefore(t, trade.closed_at))
-        : t.length - 1;
+        ? Math.max(
+            entryIdx,
+            indexOnOrBefore(times, closeSec) < 0
+              ? bars.length - 1
+              : indexOnOrBefore(times, closeSec),
+          )
+        : bars.length - 1;
+      // Peak = highest intraday HIGH in the window (matches high_watermark, not
+      // the highest close the old line used).
       let peakIdx = entryIdx;
-      for (let i = entryIdx; i <= exitIdx; i++) if (c[i] > c[peakIdx]) peakIdx = i;
+      for (let i = entryIdx; i <= exitIdx; i++) if (bars[i].h > bars[peakIdx].h) peakIdx = i;
+
+      const px0 = bars[entryIdx].c;
+      const precision = px0 < 5 ? 4 : 2;
 
       chart = createChart(el, {
-        height: 280,
+        height: 300,
         autoSize: true,
         layout: {
           background: { type: ColorType.Solid, color: C.surface },
@@ -151,40 +196,45 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
           fontSize: 11,
           attributionLogo: false,
         },
-        grid: {
-          vertLines: { color: C.grid },
-          horzLines: { color: C.grid },
-        },
+        grid: { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
         rightPriceScale: { borderVisible: false },
-        timeScale: { borderVisible: false, fixLeftEdge: true, fixRightEdge: true },
+        timeScale: {
+          borderVisible: false,
+          fixLeftEdge: true,
+          fixRightEdge: true,
+          timeVisible: intraday,
+          secondsVisible: false,
+        },
         crosshair: {
           mode: CrosshairMode.Magnet,
           vertLine: { labelBackgroundColor: '#2a2e33' },
           horzLine: { labelBackgroundColor: '#2a2e33' },
         },
-        // A fixed audit window, not an explorer: no pan/zoom, no accidental
-        // scroll-jacking inside the table. The crosshair still reads values.
+        // A fixed audit window, not an explorer: no pan/zoom, no scroll-jacking
+        // inside the table. The crosshair still reads every value.
         handleScroll: false,
         handleScale: false,
       });
 
-      series = chart.addSeries(AreaSeries, {
-        lineColor: C.line,
-        lineWidth: 2,
-        topColor: C.fillTop,
-        bottomColor: C.fillBottom,
+      series = chart.addSeries(CandlestickSeries, {
+        upColor: C.up,
+        downColor: C.down,
+        borderVisible: false,
+        wickUpColor: C.wickUp,
+        wickDownColor: C.wickDown,
         priceLineVisible: false,
         lastValueVisible: !closed,
-        crosshairMarkerRadius: 5,
         priceFormat: {
           type: 'price',
-          precision: c[entryIdx] < 5 ? 4 : 2,
-          minMove: c[entryIdx] < 5 ? 0.0001 : 0.01,
+          precision,
+          minMove: px0 < 5 ? 0.0001 : 0.01,
         },
       });
-      series.setData(t.map((time, i) => ({ time: time as Time, value: c[i] })));
+      series.setData(
+        bars.map((b) => ({ time: b.t as Time, open: b.o, high: b.h, low: b.l, close: b.c })),
+      );
 
-      // Reference lines — the levels that governed this trade.
+      // Entry: a dotted reference at the fill price.
       if (trade.entry) {
         series.createPriceLine({
           price: trade.entry,
@@ -195,33 +245,50 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
           title: 'entry',
         });
       }
-      if (trade.init_stop) {
-        const trailed = !closed && trade.stop != null && trade.stop !== trade.init_stop;
-        series.createPriceLine({
-          price: trade.init_stop,
+
+      // Stop: a STEPPED line. Flat at the initial stop, then a single step up to
+      // the current/exit stop around the peak — so a trailed exit reads as a
+      // staircase. (A true per-tick trajectory would need stop-move history;
+      // this two-level step is an honest summary of where the stop started and
+      // where it ended.)
+      const initStop = trade.init_stop ?? null;
+      const curStop = trade.stop ?? null;
+      const trailed = curStop != null && initStop != null && Math.abs(curStop - initStop) > 1e-9;
+      if (initStop) {
+        const stopSeries = chart.addSeries(LineSeries, {
           color: C.stop,
-          lineWidth: 1,
+          lineWidth: 2,
           lineStyle: LineStyle.Dashed,
-          axisLabelVisible: !trailed, // the live stop owns the axis label if both exist
-          title: trailed ? 'stop @ entry' : 'stop',
+          lineType: LineType.WithSteps,
+          priceLineVisible: false,
+          lastValueVisible: true,
+          crosshairMarkerVisible: false,
+          priceFormat: { type: 'price', precision, minMove: px0 < 5 ? 0.0001 : 0.01 },
         });
-        if (trailed && trade.stop) {
-          series.createPriceLine({
-            price: trade.stop,
-            color: C.stop,
-            lineWidth: 1,
-            lineStyle: LineStyle.Solid,
-            axisLabelVisible: true,
-            title: 'stop now',
-          });
+        const pts: { time: Time; value: number }[] = [];
+        const addPt = (idx: number, value: number) => {
+          const time = times[idx] as Time;
+          const last = pts[pts.length - 1];
+          if (last && last.time === time)
+            last.value = value; // same bar → keep the stepped value
+          else pts.push({ time, value });
+        };
+        addPt(entryIdx, initStop);
+        if (trailed && curStop != null) {
+          addPt(peakIdx, initStop); // hold init up to the peak
+          addPt(peakIdx, curStop); // …then step up (dedup overwrites, WithSteps draws the riser)
+          addPt(exitIdx, curStop);
+        } else {
+          addPt(exitIdx, initStop);
         }
+        stopSeries.setData(pts);
       }
 
       // Trade markers — BUY in, SELL out, peak flagged between them.
       const outcomeColor = result == null ? '#8a8f98' : result >= 0 ? C.buy : C.sell;
       const markers: SeriesMarker<Time>[] = [
         {
-          time: t[entryIdx] as Time,
+          time: times[entryIdx] as Time,
           position: 'belowBar',
           color: C.buy,
           shape: 'arrowUp',
@@ -230,19 +297,17 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
       ];
       if (peakIdx !== entryIdx && peakIdx !== exitIdx) {
         markers.push({
-          time: t[peakIdx] as Time,
+          time: times[peakIdx] as Time,
           position: 'aboveBar',
           color: C.peak,
           shape: 'circle',
-          // size 0 renders the label without the circle blob — a clean flag
-          // (verified in the local harness; the default circle is oversized).
-          size: 0,
+          size: 0, // label-only flag; the default blob is oversized
           text: trade.peak_pct != null ? `peak +${trade.peak_pct}%` : 'peak',
         });
       }
       if (closed) {
         markers.push({
-          time: t[exitIdx] as Time,
+          time: times[exitIdx] as Time,
           position: 'aboveBar',
           color: outcomeColor,
           shape: 'arrowDown',
@@ -250,18 +315,16 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
         });
       }
 
-      // Mid-trade events: scale-in adds (＋, a second buy) and +2R partial
-      // sells (½, half banked into strength). Each snaps to the first bar on or
-      // after its date; an event outside the fetched window is skipped, never
-      // crashes. Adds read as buys (green, below); partials as profit-taking
-      // (amber, above) — distinct shape from the entry/exit arrows.
+      // Mid-trade events: scale-in adds (＋) and +2R partial sells (½). Each
+      // snaps to the first bar on/after its date; an event outside the window is
+      // skipped, never crashes.
       for (const ev of trade.events ?? []) {
         if (!ev?.ts) continue;
-        const i = indexOnOrAfter(t, ev.ts);
+        const i = indexOnOrAfter(dates, ev.ts);
         if (i < 0) continue;
         if (ev.kind === 'add') {
           markers.push({
-            time: t[i] as Time,
+            time: times[i] as Time,
             position: 'belowBar',
             color: C.buy,
             shape: 'square',
@@ -269,7 +332,7 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
           });
         } else if (ev.kind === 'partial') {
           markers.push({
-            time: t[i] as Time,
+            time: times[i] as Time,
             position: 'aboveBar',
             color: C.peak,
             shape: 'square',
@@ -279,15 +342,15 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
       }
 
       // Lightweight-charts requires markers in ascending time order.
-      markers.sort((a, b) => String(a.time).localeCompare(String(b.time)));
+      markers.sort((a, b) => Number(a.time) - Number(b.time));
       createSeriesMarkers(series, markers);
 
-      // Pointer readout (TradingView-style legend): date · price · % vs entry.
+      // Pointer readout (TradingView-style legend): time · price · % vs entry.
       const readout = readoutRef.current;
-      const renderReadout = (time: string | null, price: number | null) => {
+      const renderReadout = (label: string | null, price: number | null) => {
         if (!readout) return;
-        const px = price ?? c[c.length - 1];
-        const when = time ?? t[t.length - 1];
+        const px = price ?? bars[bars.length - 1].c;
+        const when = label ?? fmtBarTime(times[times.length - 1], intraday);
         const vs =
           trade.entry && px
             ? ` · ${px >= trade.entry ? '+' : ''}${(((px - trade.entry) / trade.entry) * 100).toFixed(1)}% vs entry`
@@ -297,18 +360,15 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
       };
       renderReadout(null, null);
       chart.subscribeCrosshairMove((param: MouseEventParams) => {
-        if (!param.time || !series || !param.seriesData.has(series)) {
+        if (param.time == null || !series || !param.seriesData.has(series)) {
           renderReadout(null, null);
           return;
         }
-        const d = param.seriesData.get(series) as { value?: number } | undefined;
-        renderReadout(String(param.time), d?.value ?? null);
+        const d = param.seriesData.get(series) as { close?: number } | undefined;
+        renderReadout(fmtBarTime(Number(param.time), intraday), d?.close ?? null);
       });
 
       chart.timeScale().fitContent();
-
-      // autoSize handles container resizes, but only while the element is
-      // attached; the observer refits content so the window never clips.
       ro = new ResizeObserver(() => chart?.timeScale().fitContent());
       ro.observe(el);
     })();
@@ -320,7 +380,7 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
       chart = null;
       series = null;
     };
-  }, [bars, trade, closed, result]);
+  }, [data, trade, closed, result]);
 
   if (err) {
     return (
@@ -329,6 +389,8 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
       </p>
     );
   }
+
+  const intraday = data != null && data.interval !== '1d';
 
   return (
     <div className="px-2 py-3 sm:px-4">
@@ -339,8 +401,13 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
           aria-live="polite"
           className="pointer-events-none absolute left-3 top-2 z-10 font-mono text-[11px] tabular-nums text-text-muted"
         />
-        <div ref={containerRef} className="h-[280px] w-full" />
-        {!bars && (
+        {data && (
+          <div className="pointer-events-none absolute right-3 top-2 z-10 font-mono text-[10px] uppercase tracking-wide text-text-subtle">
+            {data.interval} bars
+          </div>
+        )}
+        <div ref={containerRef} className="h-[300px] w-full" />
+        {!data && (
           <p
             className="absolute inset-0 flex animate-pulse items-center justify-center text-xs text-text-subtle"
             aria-live="polite"
@@ -362,7 +429,7 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
         {kept != null && (
           <span className={captureTone(trade.peak_pct, kept)}>kept {kept}% of peak</span>
         )}
-        {bars && (
+        {data && (
           <details className="ml-auto">
             <summary className="cursor-pointer transition-colors hover:text-text-muted">
               data table
@@ -372,7 +439,13 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
                 <thead>
                   <tr className="text-left">
                     <th scope="col" className="pr-4 font-medium">
-                      date
+                      time
+                    </th>
+                    <th scope="col" className="pr-3 text-right font-medium">
+                      high
+                    </th>
+                    <th scope="col" className="pr-3 text-right font-medium">
+                      low
                     </th>
                     <th scope="col" className="text-right font-medium">
                       close
@@ -380,10 +453,12 @@ export default function TradeLifecycle({ trade }: { trade: TradeFacts }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {bars.t.map((d, i) => (
-                    <tr key={d}>
-                      <td className="pr-4">{d}</td>
-                      <td className="text-right">{bars.c[i]}</td>
+                  {data.bars.map((b) => (
+                    <tr key={b.t}>
+                      <td className="pr-4">{fmtBarTime(b.t, intraday)}</td>
+                      <td className="pr-3 text-right">{b.h}</td>
+                      <td className="pr-3 text-right">{b.l}</td>
+                      <td className="text-right">{b.c}</td>
                     </tr>
                   ))}
                 </tbody>
