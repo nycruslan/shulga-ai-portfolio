@@ -286,6 +286,26 @@ export type PlaygroundResult = {
   closed?: TraderClosed[];
   curve?: EquityPoint[];
 };
+// Today's candidate shelf, per name. The list the playgrounds shop from — and
+// it grows through the day as later scans add intraday movers, which is why a
+// portfolio that buys at 10:05 can miss names that show up here at 11:00/14:00.
+export type ScanShelfItem = {
+  symbol?: string;
+  action?: string; // 'STRONG BUY' | 'BUY'
+  score?: number | null;
+  price?: number | null; // scan reference price
+  mark?: number | null; // live
+  since_scan_pct?: number | null;
+  stop?: number | null;
+  stop_pct?: number | null;
+  sector?: string | null;
+};
+export type ScanShelf = {
+  day?: string;
+  strong_buys?: number | null;
+  buys?: number | null;
+  items?: ScanShelfItem[];
+};
 export type TraderSnapshot = {
   schema_version?: number;
   generated_at?: string;
@@ -294,6 +314,7 @@ export type TraderSnapshot = {
   positions?: TraderPosition[];
   closed?: TraderClosed[];
   playground?: PlaygroundResult[];
+  scan_shelf?: ScanShelf;
   equity_curve?: Record<string, EquityPoint[]>;
   decision_test?: DecisionTest;
   learning?: Record<string, unknown>;

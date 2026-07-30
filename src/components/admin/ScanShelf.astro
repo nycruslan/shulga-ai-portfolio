@@ -1,0 +1,99 @@
+---
+import type { ScanShelf } from '../../lib/turso';
+
+// Today's candidate shelf, per name. Server-rendered and collapsible with a
+// native <details> so it costs zero client JS. The shelf grows through the day
+// as the 11:00 and 14:00 scans add intraday movers, so this is where you see
+// strong buys that showed up after the 10:05 playground buy already ran.
+interface Props {
+  shelf: ScanShelf | null;
+}
+const { shelf } = Astro.props;
+const items = shelf?.items ?? [];
+const strong = shelf?.strong_buys ?? 0;
+const plain = shelf?.buys ?? 0;
+
+const fmtPx = (n?: number | null) =>
+  n == null ? '—' : n >= 100 ? `$${n.toFixed(2)}` : `$${n.toFixed(2)}`;
+const fmtPct = (n?: number | null) => (n == null ? '—' : `${n > 0 ? '+' : ''}${n.toFixed(1)}%`);
+const dir = (a?: string) => (a === 'STRONG BUY' ? '🟢 STRONG' : 'BUY');
+---
+
+{
+  items.length > 0 ? (
+    <details class="group mt-8" open>
+      <summary class="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-text">
+        <span class="text-xs text-text-subtle transition-transform group-open:rotate-90">▶</span>
+        Today's scan
+        <span class="font-normal text-text-muted">
+          · {strong} strong buy{strong === 1 ? '' : 's'}
+          {plain > 0 && ` · ${plain} plain`}
+        </span>
+      </summary>
+
+      <p class="mt-1 max-w-2xl pl-5 text-[11px] leading-relaxed text-text-subtle">
+        Every name the day's scans have found so far. The list grows as the 11:00 and 14:00 scans
+        add intraday movers, so names below the 10:05 playground buy may not be in any portfolio
+        yet.
+        <span class="text-text-muted">Scan price</span> is the 09:15 reference;
+        <span class="text-text-muted"> now</span> is live.
+      </p>
+
+      <div class="mt-3 overflow-x-auto rounded-xl border border-border">
+        <table class="w-full min-w-[640px] border-collapse text-xs">
+          <thead>
+            <tr class="border-b border-border text-left text-[11px] uppercase tracking-wide text-text-subtle">
+              <th class="px-3 py-2 font-medium">Symbol</th>
+              <th class="px-3 py-2 font-medium">Signal</th>
+              <th class="px-3 py-2 text-right font-medium">Score</th>
+              <th class="px-3 py-2 text-right font-medium">Scan price</th>
+              <th class="px-3 py-2 text-right font-medium">Now</th>
+              <th class="px-3 py-2 text-right font-medium">Since scan</th>
+              <th class="px-3 py-2 text-right font-medium">Stop</th>
+              <th class="px-3 py-2 font-medium">Sector</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((it) => (
+              <tr class="border-b border-border/50 last:border-0 hover:bg-white/[0.02]">
+                <td class="px-3 py-2 font-medium text-text">{it.symbol}</td>
+                <td class="px-3 py-2 text-text-muted">
+                  <span class={it.action === 'STRONG BUY' ? 'text-gain' : 'text-text-subtle'}>
+                    {dir(it.action)}
+                  </span>
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums text-text-muted">
+                  {it.score == null ? '—' : Math.round(it.score)}
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums text-text-muted">{fmtPx(it.price)}</td>
+                <td class="px-3 py-2 text-right tabular-nums text-text">{fmtPx(it.mark)}</td>
+                <td
+                  class={
+                    'px-3 py-2 text-right tabular-nums ' +
+                    (it.since_scan_pct == null
+                      ? 'text-text-subtle'
+                      : it.since_scan_pct > 0
+                        ? 'text-gain'
+                        : it.since_scan_pct < 0
+                          ? 'text-loss'
+                          : 'text-text-muted')
+                  }
+                >
+                  {fmtPct(it.since_scan_pct)}
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums text-text-muted">
+                  {it.stop_pct == null ? '—' : `−${it.stop_pct.toFixed(1)}%`}
+                </td>
+                <td class="px-3 py-2 text-text-subtle">{it.sector ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  ) : (
+    <p class="mt-8 rounded-xl border border-dashed border-border bg-bg/40 px-3 py-2 text-xs text-text-subtle">
+      No scan candidates recorded yet today. The pre-open scan seeds the shelf around 09:15 ET.
+    </p>
+  )
+}

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createPortfolioSchema,
   describeParams,
+  describePlan,
   paramsSchema,
   statusSchema,
 } from './playground-schema';
@@ -159,5 +160,37 @@ describe('describeParams — the plain-English contract', () => {
         paramsSchema.parse({ buy_rule: { type: 'all' }, stop: { mode: 'fixed', pct: 10 } }),
       ),
     ).toContain('fixed 10% stop');
+  });
+});
+
+describe('describePlan', () => {
+  it('caps position count by cash when size is large — the "score 50 but only 4 buys" case', () => {
+    const p = paramsSchema.parse({ buy_rule: { type: 'min_score', min_score: 50 }, size_pct: 25 });
+    const s = describePlan(p, 25_000);
+    expect(s).toContain('~4 positions'); // 100/25 = 4, the whole account
+    expect(s).toContain('fills the whole account after 4 buys');
+    expect(s).toContain('Skips any name it already owns');
+  });
+
+  it('caps by the max-open limit when size is small', () => {
+    const p = paramsSchema.parse({ buy_rule: { type: 'all' }, size_pct: 1, max_positions: 30 });
+    const s = describePlan(p, 25_000);
+    expect(s).toContain('~30 positions'); // 100/1 = 100, but max_positions 30 binds first
+    expect(s).toContain('30-open limit caps it');
+  });
+
+  it('warns about a price ceiling only when the slot is small enough to bite', () => {
+    // $250 slot (1% of $25k) drops pricey names.
+    const small = describePlan(
+      paramsSchema.parse({ buy_rule: { type: 'all' }, size_pct: 1 }),
+      25_000,
+    );
+    expect(small).toContain("Won't buy any stock priced over $250");
+    // $6,250 slot (25% of $25k) is above any real share price — no warning.
+    const big = describePlan(
+      paramsSchema.parse({ buy_rule: { type: 'all' }, size_pct: 25 }),
+      25_000,
+    );
+    expect(big).not.toContain("Won't buy any stock priced over");
   });
 });

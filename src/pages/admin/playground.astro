@@ -2,6 +2,7 @@
 export const prerender = false;
 import AdminShell from '../../layouts/AdminShell.astro';
 import PlaygroundManager from '../../components/admin/PlaygroundManager.tsx';
+import ScanShelf from '../../components/admin/ScanShelf.astro';
 import { listPlaygroundConfigs, readTraderSnapshot } from '../../lib/turso';
 import { relativeTime } from '../../lib/relative-time';
 
@@ -11,6 +12,7 @@ import { relativeTime } from '../../lib/relative-time';
 const [configs, result] = await Promise.all([listPlaygroundConfigs(), readTraderSnapshot()]);
 const snap = result.status === 'ok' ? result.snap : null;
 const results = snap?.playground ?? [];
+const scanShelf = snap?.scan_shelf ?? null;
 const updated = snap?.generated_at ? relativeTime(snap.generated_at) : null;
 ---
 
@@ -33,6 +35,8 @@ const updated = snap?.generated_at ? relativeTime(snap.generated_at) : null;
   </p>
 
   <PlaygroundManager client:load configs={configs} results={results} />
+
+  <ScanShelf shelf={scanShelf} />
 
   {
     /* Field guide. Collapsed by default: every knob already carries its own help
@@ -93,8 +97,8 @@ const updated = snap?.generated_at ? relativeTime(snap.generated_at) : null;
       <div>
         <dt class="font-medium text-text">Take profit — the "sell when up" rule</dt>
         <dd class="text-text-muted">
-          Sells the whole position once it's up your %. Enforced tick-level by the live monitor
-          (two confirming ticks, same as stops), with the two daily runs (10:05 and 16:05 ET) as a
+          Sells the whole position once it's up your %. Enforced tick-level by the live monitor (two
+          confirming ticks, same as stops), with the two daily runs (10:05 and 16:05 ET) as a
           backstop if the monitor was down. Blank = no target: winners ride the trailing stop and
           the +2R half-sell instead.
         </dd>

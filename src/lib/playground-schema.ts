@@ -137,6 +137,36 @@ export function describeParams(p: PlaygroundParams): string {
   return bits.join(' · ') + '. Exits are mechanical (stop / trail / ratchet / +2R partial / time).';
 }
 
+/** The practical consequences of a config, in plain terms: how many positions
+ * it can actually hold, what it's too small to buy, and that it never
+ * double-buys. Shown live in the form so size and capital choices don't turn
+ * into a surprise later ("I set score 50, why only 4 buys?" — because 25% size
+ * fills the account after 4). */
+export function describePlan(p: PlaygroundParams, capital: number): string {
+  const maxByCash = Math.floor(100 / p.size_pct);
+  const effectiveMax = Math.max(1, Math.min(maxByCash, p.max_positions));
+  const slotUsd = Math.round((capital * p.size_pct) / 100);
+  const bits: string[] = [];
+  const capReason =
+    maxByCash <= p.max_positions
+      ? `${p.size_pct}% size fills the whole account after ${maxByCash} buy${maxByCash === 1 ? '' : 's'}`
+      : `your ${p.max_positions}-open limit caps it`;
+  bits.push(
+    `Holds ~${effectiveMax} position${effectiveMax === 1 ? '' : 's'} at most (${capReason}).`,
+  );
+  // A slot smaller than a typical share price silently drops pricey names. Below
+  // ~$500 this bites real tickers (UNH, HUM, PANW all trade above it).
+  if (slotUsd < 500) {
+    bits.push(
+      `Won't buy any stock priced over $${slotUsd.toLocaleString()} — one slot can't afford a full share, so higher-priced names drop out.`,
+    );
+  }
+  bits.push(
+    'Skips any name it already owns, so a portfolio that holds winners buys fewer new names each day.',
+  );
+  return bits.join(' ');
+}
+
 /**
  * The same config as scannable label/value pairs.
  *

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import {
   describeParams,
+  describePlan,
   paramsSpec,
   paramsSchema,
   LIMITS,
@@ -827,6 +828,15 @@ export default function PlaygroundManager({
           <p className="rounded-lg border border-border bg-bg/60 px-3 py-2 text-xs leading-relaxed text-text-muted">
             {paramsValid ? describeParams(params) : 'Fix the highlighted values to continue.'}
           </p>
+
+          {/* what the size/capital knobs actually DO — so "score 50 but only 4 buys"
+              is never a mystery: it's the position size filling the account. */}
+          {paramsValid && (
+            <p className="-mt-1 rounded-lg border border-dashed border-border bg-bg/40 px-3 py-2 text-[11px] leading-relaxed text-text-subtle">
+              <span className="font-medium text-text-muted">In practice: </span>
+              {describePlan(params, capital)}
+            </p>
+          )}
 
           <div className="flex items-center gap-3">
             <button
