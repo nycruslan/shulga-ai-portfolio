@@ -427,6 +427,10 @@ export default function PlaygroundManager({
       ruleType,
       topN,
       minScore,
+      // plainBuys + exitMode feed the params body (include_plain_buys / exit_mode);
+      // omitting them left the live preview stale when either toggle changed.
+      plainBuys,
+      exitMode,
       sizePct,
       maxPositions,
       sectorCap,
