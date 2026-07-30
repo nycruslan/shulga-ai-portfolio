@@ -49,6 +49,12 @@ const CURVE_META: Record<string, { label: string; family: Family; crypto: boolea
   aggressive_stock: { label: 'Aggr stk', family: 'aggressive', crypto: false },
   aggressive_crypto: { label: 'Aggr crp', family: 'aggressive', crypto: true },
   systematic: { label: 'Systematic (no-AI)', family: 'systematic', crypto: false },
+  // Crypto rebuild race: the systematic majors trend book vs a passive BTC-HODL
+  // control. Both crypto (dashed). v2 shares the deterministic 'systematic'
+  // hue; BTC-HODL shares the passive 'broker' hue — the same channel logic as
+  // every other family (colour = strategy family, dash = asset class).
+  crypto_v2: { label: 'Crypto v2 (majors trend)', family: 'systematic', crypto: true },
+  btc_hodl: { label: 'BTC-HODL', family: 'broker', crypto: true },
   alpaca: { label: 'Alpaca (broker)', family: 'broker', crypto: false },
 };
 
