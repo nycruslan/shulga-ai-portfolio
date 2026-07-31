@@ -349,6 +349,7 @@ export default function PlaygroundManager({
   const [replacesId, setReplacesId] = useState<string | null>(null);
   const [topN, setTopN] = useState(5);
   const [minScore, setMinScore] = useState(95);
+  const [sizeMode, setSizeMode] = useState<'fixed_pct' | 'equal_split'>('fixed_pct');
   const [sizePct, setSizePct] = useState(5);
   const [maxPositions, setMaxPositions] = useState(20);
   const [sectorCap, setSectorCap] = useState<number | ''>('');
@@ -416,6 +417,7 @@ export default function PlaygroundManager({
             : { type: 'min_score', min_score: minScore },
       include_plain_buys: plainBuys,
       exit_mode: exitMode,
+      size_mode: sizeMode,
       size_pct: sizePct,
       max_positions: maxPositions,
       sector_cap: sectorCap === '' ? null : sectorCap,
@@ -427,10 +429,11 @@ export default function PlaygroundManager({
       ruleType,
       topN,
       minScore,
-      // plainBuys + exitMode feed the params body (include_plain_buys / exit_mode);
-      // omitting them left the live preview stale when either toggle changed.
+      // plainBuys + exitMode + sizeMode feed the params body; omitting them left
+      // the live preview stale when a toggle changed.
       plainBuys,
       exitMode,
+      sizeMode,
       sizePct,
       maxPositions,
       sectorCap,
@@ -463,6 +466,7 @@ export default function PlaygroundManager({
     if (p.buy_rule.type === 'min_score') setMinScore(p.buy_rule.min_score);
     setPlainBuys(p.include_plain_buys);
     setExitMode(p.exit_mode);
+    setSizeMode(p.size_mode ?? 'fixed_pct');
     setSizePct(p.size_pct);
     setMaxPositions(p.max_positions);
     setSectorCap(p.sector_cap ?? '');
@@ -667,6 +671,25 @@ export default function PlaygroundManager({
               </div>
             )}
             <div>
+              <label htmlFor="pg-sizemode" className={LABEL}>
+                Position sizing
+              </label>
+              <select
+                id="pg-sizemode"
+                className={INPUT}
+                value={sizeMode}
+                onChange={(e) => setSizeMode(e.target.value as typeof sizeMode)}
+              >
+                <option value="fixed_pct">Fixed % per position</option>
+                <option value="equal_split">Equal split across buys</option>
+              </select>
+              <p className={HELP}>
+                {sizeMode === 'equal_split'
+                  ? 'Divides the cash equally across every name it buys that day — always ~fully invested. More picks = smaller slices.'
+                  : 'Each buy is a fixed % of capital (set below); unused cash stays idle.'}
+              </p>
+            </div>
+            <div>
               <label htmlFor="pg-size" className={LABEL}>
                 Size %/position
               </label>
@@ -680,9 +703,12 @@ export default function PlaygroundManager({
                 step={0.5}
                 value={sizePct}
                 onChange={(e) => setSizePct(Number(e.target.value))}
+                disabled={sizeMode === 'equal_split'}
               />
               <p className={HELP}>
-                Each buy = this % of starting capital. 5% on $25k ≈ $1,250/position.
+                {sizeMode === 'equal_split'
+                  ? 'Ignored in equal-split mode — the slice is capital ÷ number of picks.'
+                  : 'Each buy = this % of starting capital. 5% on $25k ≈ $1,250/position.'}
               </p>
             </div>
           </div>

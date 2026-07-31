@@ -44,6 +44,11 @@ export const stopSchema = z.discriminatedUnion('mode', [
 
 export const exitModeSchema = z.enum(['managed', 'bracket']);
 
+// fixed_pct: every buy is size_pct% of capital (some cash usually left over).
+// equal_split: divide the available cash equally across the names bought that
+// run, so the book is always ~fully invested and size_pct is ignored.
+export const sizeModeSchema = z.enum(['fixed_pct', 'equal_split']);
+
 export const paramsSchema = z.object({
   buy_rule: buyRuleSchema,
   // managed: mechanical stack (breakeven/trail/ratchet/+2R partial) + optional TP.
@@ -51,6 +56,7 @@ export const paramsSchema = z.object({
   // no trail, no ratchet, no partial. TP is enforced tick-level by the monitor.
   exit_mode: exitModeSchema.default('managed'),
   include_plain_buys: z.boolean().default(false),
+  size_mode: sizeModeSchema.default('fixed_pct'),
   size_pct: z.number().min(LIMITS.sizePct.min).max(LIMITS.sizePct.max).default(5),
   max_positions: z
     .number()
@@ -111,9 +117,13 @@ export function describeParams(p: PlaygroundParams): string {
       : p.buy_rule.type === 'top_n'
         ? `the top ${p.buy_rule.n} strong buy${p.buy_rule.n === 1 ? '' : 's'} by score`
         : `strong buys scoring ≥ ${p.buy_rule.min_score}`;
+  const sizing =
+    p.size_mode === 'equal_split'
+      ? 'capital split equally across the day’s buys'
+      : `${p.size_pct}% of capital per position`;
   const bits = [
     `Each trading day: buy ${rule}${p.include_plain_buys ? ' (plain BUYs too)' : ''}`,
-    `${p.size_pct}% of capital per position`,
+    sizing,
     `max ${p.max_positions} open`,
   ];
   if (p.exit_mode === 'bracket') {
@@ -143,6 +153,20 @@ export function describeParams(p: PlaygroundParams): string {
  * into a surprise later ("I set score 50, why only 4 buys?" — because 25% size
  * fills the account after 4). */
 export function describePlan(p: PlaygroundParams, capital: number): string {
+  if (p.size_mode === 'equal_split') {
+    // Equal-split fully deploys across whatever it picks, so the "how many can I
+    // afford" math flips: the count is driven by the buy rule and max-open, and
+    // each slice is capital ÷ that count. No fixed per-name budget, so the
+    // price-ceiling problem essentially goes away.
+    const n =
+      p.buy_rule.type === 'top_n' ? Math.min(p.buy_rule.n, p.max_positions) : p.max_positions;
+    const slice = Math.round(capital / Math.max(1, n));
+    return (
+      `Splits the cash equally across the names it buys, so it's always ~fully invested. ` +
+      `More picks = smaller slices (up to ~${n} names → ~$${slice.toLocaleString()} each). ` +
+      'Skips any name it already owns, so freed cash from a sale funds the next new buys.'
+    );
+  }
   const maxByCash = Math.floor(100 / p.size_pct);
   const effectiveMax = Math.max(1, Math.min(maxByCash, p.max_positions));
   const slotUsd = Math.round((capital * p.size_pct) / 100);
@@ -186,7 +210,7 @@ export function paramsSpec(p: PlaygroundParams, capital: number): Array<[string,
   const spec: Array<[string, string]> = [
     ['capital', `$${capital.toLocaleString()}`],
     ['buys', rule + (p.include_plain_buys ? ' + plain' : '')],
-    ['size', `${p.size_pct}%`],
+    ['size', p.size_mode === 'equal_split' ? 'equal split' : `${p.size_pct}%`],
     ['max open', String(p.max_positions)],
   ];
   if (p.sector_cap != null) spec.push(['sector cap', String(p.sector_cap)]);

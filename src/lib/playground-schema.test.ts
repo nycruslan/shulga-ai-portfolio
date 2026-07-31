@@ -4,6 +4,7 @@ import {
   describeParams,
   describePlan,
   paramsSchema,
+  paramsSpec,
   statusSchema,
 } from './playground-schema';
 
@@ -192,5 +193,43 @@ describe('describePlan', () => {
       25_000,
     );
     expect(big).not.toContain("Won't buy any stock priced over");
+  });
+
+  it('describes equal-split as fully-invested with per-count slices', () => {
+    const p = paramsSchema.parse({
+      buy_rule: { type: 'top_n', n: 10 },
+      size_mode: 'equal_split',
+      size_pct: 5,
+    });
+    const s = describePlan(p, 25_000);
+    expect(s).toContain('always ~fully invested');
+    expect(s).toContain('~10 names'); // top_n 10 → 10 slices
+    expect(s).toContain('$2,500 each'); // 25k / 10
+    expect(s).not.toContain("Won't buy any stock priced over"); // no per-name ceiling
+  });
+});
+
+describe('size_mode', () => {
+  it('defaults to fixed_pct and accepts equal_split', () => {
+    expect(paramsSchema.parse({ buy_rule: { type: 'all' } }).size_mode).toBe('fixed_pct');
+    expect(
+      paramsSchema.parse({ buy_rule: { type: 'all' }, size_mode: 'equal_split' }).size_mode,
+    ).toBe('equal_split');
+  });
+
+  it('rejects an unknown size mode', () => {
+    expect(
+      createPortfolioSchema.safeParse({
+        name: 'X',
+        capital: 25_000,
+        params: { buy_rule: { type: 'all' }, size_mode: 'yolo' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('describeParams and paramsSpec reflect equal-split', () => {
+    const p = paramsSchema.parse({ buy_rule: { type: 'all' }, size_mode: 'equal_split' });
+    expect(describeParams(p)).toContain('split equally');
+    expect(paramsSpec(p, 25_000)).toContainEqual(['size', 'equal split']);
   });
 });
