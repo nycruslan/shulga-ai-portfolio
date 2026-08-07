@@ -3,6 +3,8 @@ import {
   createPortfolioSchema,
   describeParams,
   describePlan,
+  describeRatchet,
+  DEFAULT_RATCHET_STEPS,
   paramsSchema,
   paramsSpec,
   statusSchema,
@@ -231,5 +233,38 @@ describe('size_mode', () => {
     const p = paramsSchema.parse({ buy_rule: { type: 'all' }, size_mode: 'equal_split' });
     expect(describeParams(p)).toContain('split equally');
     expect(paramsSpec(p, 25_000)).toContainEqual(['size', 'equal split']);
+  });
+});
+
+describe('ratchet exit mode', () => {
+  it('defaults to the classic ladder and accepts the mode', () => {
+    const p = paramsSchema.parse({ buy_rule: { type: 'all' }, exit_mode: 'ratchet' });
+    expect(p.exit_mode).toBe('ratchet');
+    expect(p.ratchet_steps).toEqual(DEFAULT_RATCHET_STEPS);
+  });
+
+  it('rejects an unknown exit mode and out-of-range / empty ladders', () => {
+    const bad = (params: unknown) =>
+      createPortfolioSchema.safeParse({ name: 'X', capital: 25_000, params }).success;
+    expect(bad({ buy_rule: { type: 'all' }, exit_mode: 'yolo' })).toBe(false);
+    expect(bad({ buy_rule: { type: 'all' }, ratchet_steps: [] })).toBe(false); // min 1
+    expect(bad({ buy_rule: { type: 'all' }, ratchet_steps: [{ at: 99, lock: 0 }] })).toBe(false); // at > 20
+  });
+
+  it('describeRatchet reads as a ladder', () => {
+    expect(
+      describeRatchet([
+        { at: 1, lock: 0 },
+        { at: 2, lock: 0.5 },
+      ]),
+    ).toBe('+1R → breakeven, +2R → lock +0.5R');
+  });
+
+  it('describeParams and paramsSpec surface the ratchet', () => {
+    const p = paramsSchema.parse({ buy_rule: { type: 'all' }, exit_mode: 'ratchet' });
+    const s = describeParams(p);
+    expect(s).toContain('milestone ratchet');
+    expect(s).toContain('no fixed take-profit');
+    expect(paramsSpec(p, 25_000)).toContainEqual(['exits', 'ratchet (3 steps)']);
   });
 });

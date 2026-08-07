@@ -3,12 +3,15 @@ import type { ColumnDef } from '@tanstack/react-table';
 import {
   describeParams,
   describePlan,
+  describeRatchet,
   paramsSpec,
   paramsSchema,
+  DEFAULT_RATCHET_STEPS,
   LIMITS,
   type PlaygroundConfig,
   type PlaygroundParams,
   type PlaygroundStatus,
+  type RatchetStep,
 } from '../../lib/playground-schema';
 import { DataTable, InfoTip } from './TraderTables';
 import TradeLifecycle, { captureTone, fmtPx, type TradeEvent } from './TradeLifecycle';
@@ -343,7 +346,20 @@ export default function PlaygroundManager({
   const [capital, setCapital] = useState(25_000);
   const [ruleType, setRuleType] = useState<'top_n' | 'all' | 'min_score'>('top_n');
   const [plainBuys, setPlainBuys] = useState(false);
-  const [exitMode, setExitMode] = useState<'managed' | 'bracket'>('managed');
+  const [exitMode, setExitMode] = useState<'managed' | 'bracket' | 'ratchet'>('managed');
+  const [ratchetSteps, setRatchetSteps] = useState<RatchetStep[]>(
+    DEFAULT_RATCHET_STEPS.map((s) => ({ ...s })),
+  );
+  const updateStep = (i: number, field: 'at' | 'lock', value: number) =>
+    setRatchetSteps((steps) => steps.map((s, j) => (j === i ? { ...s, [field]: value } : s)));
+  const addStep = () =>
+    setRatchetSteps((steps) => {
+      if (steps.length >= 6) return steps;
+      const last = steps[steps.length - 1] ?? { at: 0, lock: 0 };
+      return [...steps, { at: last.at + 1, lock: Math.max(0, last.lock + 0.5) }];
+    });
+  const removeStep = (i: number) =>
+    setRatchetSteps((steps) => (steps.length <= 1 ? steps : steps.filter((_, j) => j !== i)));
   // Edit-as-new-version: prefill from an existing card; on submit the old
   // version is archived atomically by the API (configs are immutable).
   const [replacesId, setReplacesId] = useState<string | null>(null);
@@ -417,6 +433,7 @@ export default function PlaygroundManager({
             : { type: 'min_score', min_score: minScore },
       include_plain_buys: plainBuys,
       exit_mode: exitMode,
+      ratchet_steps: ratchetSteps,
       size_mode: sizeMode,
       size_pct: sizePct,
       max_positions: maxPositions,
@@ -429,10 +446,11 @@ export default function PlaygroundManager({
       ruleType,
       topN,
       minScore,
-      // plainBuys + exitMode + sizeMode feed the params body; omitting them left
-      // the live preview stale when a toggle changed.
+      // plainBuys + exitMode + sizeMode + ratchetSteps feed the params body;
+      // omitting them left the live preview stale when a toggle changed.
       plainBuys,
       exitMode,
+      ratchetSteps,
       sizeMode,
       sizePct,
       maxPositions,
@@ -466,6 +484,9 @@ export default function PlaygroundManager({
     if (p.buy_rule.type === 'min_score') setMinScore(p.buy_rule.min_score);
     setPlainBuys(p.include_plain_buys);
     setExitMode(p.exit_mode);
+    setRatchetSteps(
+      (p.ratchet_steps ?? DEFAULT_RATCHET_STEPS).map((s) => ({ at: s.at, lock: s.lock })),
+    );
     setSizeMode(p.size_mode ?? 'fixed_pct');
     setSizePct(p.size_pct);
     setMaxPositions(p.max_positions);
@@ -777,11 +798,14 @@ export default function PlaygroundManager({
               >
                 <option value="managed">Managed (mechanical stack)</option>
                 <option value="bracket">Simple bracket (my % only)</option>
+                <option value="ratchet">Ratchet (milestone step-stop)</option>
               </select>
               <p className={HELP}>
                 {exitMode === 'bracket'
                   ? 'Each position sells ONLY at your profit %, its stop, or the time limit. No trailing, no ratchet, no partial sells — pure bracket.'
-                  : 'Breakeven arming, peak ratchet, trailing stop and +2R partial manage each position; your profit % (if set) adds a tick-level target on top.'}
+                  : exitMode === 'ratchet'
+                    ? 'Winners ride a ladder of profit-locking steps you define below (in R = entry − stop). No fixed take-profit — the stop climbs and the position runs until it’s hit or times out.'
+                    : 'Breakeven arming, peak ratchet, trailing stop and +2R partial manage each position; your profit % (if set) adds a tick-level target on top.'}
               </p>
             </div>
             <div>
@@ -853,6 +877,75 @@ export default function PlaygroundManager({
               )}
             </div>
           </div>
+
+          {/* Ratchet ladder editor — only when exit style is ratchet. An editable
+              list of milestone steps (at R of gain → lock R), the 3Commas-style
+              tiered pattern. */}
+          {exitMode === 'ratchet' && (
+            <div className="rounded-lg border border-border bg-bg/40 p-3">
+              <div className="flex items-center justify-between">
+                <span className={LABEL}>Ratchet ladder (in R = entry − stop)</span>
+                <button
+                  type="button"
+                  onClick={addStep}
+                  disabled={ratchetSteps.length >= 6}
+                  className="rounded-md border border-border-strong px-2 py-1 text-[11px] text-text-muted transition-colors hover:bg-white/[0.05] hover:text-text disabled:opacity-40"
+                >
+                  + add step
+                </button>
+              </div>
+              <p className={HELP}>
+                At each trigger (R of gain the peak clears), the stop climbs to lock that many R of
+                profit. Classic: +1R → breakeven, +2R → +0.5R, +3R → +1.5R.
+              </p>
+              <div className="mt-2 space-y-1.5">
+                {ratchetSteps.map((s, i) => (
+                  <div key={i} className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-text-subtle">at</span>
+                    <input
+                      className={INPUT + ' w-16'}
+                      type="number"
+                      inputMode="decimal"
+                      min={0.1}
+                      max={20}
+                      step={0.5}
+                      value={s.at}
+                      onChange={(e) => updateStep(i, 'at', Number(e.target.value))}
+                      aria-label={`step ${i + 1} trigger in R`}
+                    />
+                    <span className="text-text-subtle">R → lock</span>
+                    <input
+                      className={INPUT + ' w-16'}
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      max={20}
+                      step={0.5}
+                      value={s.lock}
+                      onChange={(e) => updateStep(i, 'lock', Number(e.target.value))}
+                      aria-label={`step ${i + 1} lock in R`}
+                    />
+                    <span className="text-text-muted">
+                      R {s.lock === 0 ? '(breakeven)' : `(+${s.lock}R profit)`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeStep(i)}
+                      disabled={ratchetSteps.length <= 1}
+                      className="ml-auto rounded-md px-2 py-1 text-[11px] text-text-subtle transition-colors hover:text-loss disabled:opacity-30"
+                      aria-label={`remove step ${i + 1}`}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] leading-snug text-text-subtle">
+                Ladder: {describeRatchet(ratchetSteps)}. Rungs auto-sort and clamp on save (a lock
+                must be below its trigger).
+              </p>
+            </div>
+          )}
 
           {/* the config, in plain English — no mystery sliders */}
           <p className="rounded-lg border border-border bg-bg/60 px-3 py-2 text-xs leading-relaxed text-text-muted">

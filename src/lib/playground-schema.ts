@@ -42,19 +42,37 @@ export const stopSchema = z.discriminatedUnion('mode', [
   }),
 ]);
 
-export const exitModeSchema = z.enum(['managed', 'bracket']);
+export const exitModeSchema = z.enum(['managed', 'bracket', 'ratchet']);
 
 // fixed_pct: every buy is size_pct% of capital (some cash usually left over).
 // equal_split: divide the available cash equally across the names bought that
 // run, so the book is always ~fully invested and size_pct is ignored.
 export const sizeModeSchema = z.enum(['fixed_pct', 'equal_split']);
 
+// One rung of a milestone step-ratchet: at `at` R of gain, move the stop to
+// entry + `lock` R (R = entry − initial stop). The Python side re-validates
+// (lock < at, ascending triggers, monotone locks), so this stays permissive.
+export const ratchetStepSchema = z.object({
+  at: z.number().min(0.1).max(20),
+  lock: z.number().min(0).max(20),
+});
+
+// The classic research default ladder: breakeven@1R, +0.5R@2R, +1.5R@3R.
+export const DEFAULT_RATCHET_STEPS: Array<{ at: number; lock: number }> = [
+  { at: 1, lock: 0 },
+  { at: 2, lock: 0.5 },
+  { at: 3, lock: 1.5 },
+];
+
 export const paramsSchema = z.object({
   buy_rule: buyRuleSchema,
   // managed: mechanical stack (breakeven/trail/ratchet/+2R partial) + optional TP.
   // bracket: sell EACH position ONLY at its own profit % / stop / time limit —
   // no trail, no ratchet, no partial. TP is enforced tick-level by the monitor.
+  // ratchet: the configurable milestone step-ratchet (ratchet_steps) drives the
+  // stop; winners ride the ladder (no fixed TP).
   exit_mode: exitModeSchema.default('managed'),
+  ratchet_steps: z.array(ratchetStepSchema).min(1).max(6).default(DEFAULT_RATCHET_STEPS),
   include_plain_buys: z.boolean().default(false),
   size_mode: sizeModeSchema.default('fixed_pct'),
   size_pct: z.number().min(LIMITS.sizePct.min).max(LIMITS.sizePct.max).default(5),
@@ -97,6 +115,14 @@ export const statusSchema = z.enum(['active', 'paused', 'archived']);
 export type PlaygroundParams = z.infer<typeof paramsSchema>;
 export type CreatePortfolioInput = z.infer<typeof createPortfolioSchema>;
 export type PlaygroundStatus = z.infer<typeof statusSchema>;
+export type RatchetStep = z.infer<typeof ratchetStepSchema>;
+
+/** The ratchet ladder in plain English: "+1R → breakeven, +2R → lock +0.5R". */
+export function describeRatchet(steps: RatchetStep[]): string {
+  return steps
+    .map((s) => `+${s.at}R → ${s.lock === 0 ? 'breakeven' : `lock +${s.lock}R`}`)
+    .join(', ');
+}
 
 export type PlaygroundConfig = {
   id: string;
@@ -141,6 +167,13 @@ export function describeParams(p: PlaygroundParams): string {
   );
   if (p.exit_mode === 'bracket') {
     return bits.join(' · ') + '.';
+  }
+  if (p.exit_mode === 'ratchet') {
+    bits.push(`${p.time_limit_days}d time limit`);
+    return (
+      bits.join(' · ') +
+      `. Winners ride a milestone ratchet (${describeRatchet(p.ratchet_steps)}); no fixed take-profit.`
+    );
   }
   if (p.take_profit_pct != null) bits.push(`take profit at +${p.take_profit_pct}% (tick-level)`);
   bits.push(`${p.time_limit_days}d time limit`);
@@ -222,8 +255,22 @@ export function paramsSpec(p: PlaygroundParams, capital: number): Array<[string,
         ? `capped ${p.stop.pct}%`
         : 'structural',
   ]);
-  spec.push(['take profit', p.take_profit_pct != null ? `+${p.take_profit_pct}%` : 'ride']);
+  spec.push([
+    'take profit',
+    p.exit_mode === 'ratchet'
+      ? 'ride (ratchet)'
+      : p.take_profit_pct != null
+        ? `+${p.take_profit_pct}%`
+        : 'ride',
+  ]);
   spec.push(['time limit', `${p.time_limit_days}d`]);
-  spec.push(['exits', p.exit_mode === 'bracket' ? 'simple bracket' : 'managed']);
+  spec.push([
+    'exits',
+    p.exit_mode === 'bracket'
+      ? 'simple bracket'
+      : p.exit_mode === 'ratchet'
+        ? `ratchet (${p.ratchet_steps.length} steps)`
+        : 'managed',
+  ]);
   return spec;
 }
