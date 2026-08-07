@@ -355,7 +355,7 @@ export default function PlaygroundManager({
             .toUpperCase()
             .split(/[\s,]+/)
             .map((s) => s.trim())
-            .filter((s) => /^[A-Z][A-Z0-9.\-]{0,9}$/.test(s)),
+            .filter((s) => /^[A-Z][A-Z0-9.-]{0,9}$/.test(s)),
         ),
       ).slice(0, 20),
     [tickerText],
