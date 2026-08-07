@@ -268,3 +268,28 @@ describe('ratchet exit mode', () => {
     expect(paramsSpec(p, 25_000)).toContainEqual(['exits', 'ratchet (3 steps)']);
   });
 });
+
+describe('tickers buy mode', () => {
+  it('accepts a hand-picked list and upper-cases it', () => {
+    const p = paramsSchema.parse({ buy_rule: { type: 'tickers', symbols: ['aapl', 'msft'] } });
+    expect(p.buy_rule).toEqual({ type: 'tickers', symbols: ['AAPL', 'MSFT'] });
+  });
+
+  it('rejects an empty or oversized list', () => {
+    const bad = (symbols: string[]) =>
+      createPortfolioSchema.safeParse({
+        name: 'X',
+        capital: 25_000,
+        params: { buy_rule: { type: 'tickers', symbols } },
+      }).success;
+    expect(bad([])).toBe(false); // min 1
+    expect(bad(Array(21).fill('AAA'))).toBe(false); // max 20
+    expect(bad(['AAPL'])).toBe(true);
+  });
+
+  it('describeParams and paramsSpec name the picks', () => {
+    const p = paramsSchema.parse({ buy_rule: { type: 'tickers', symbols: ['AAPL', 'NVDA'] } });
+    expect(describeParams(p)).toContain('your picked names (AAPL, NVDA)');
+    expect(paramsSpec(p, 25_000)).toContainEqual(['buys', 'picked: AAPL, NVDA']);
+  });
+});

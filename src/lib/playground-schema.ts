@@ -28,6 +28,13 @@ export const buyRuleSchema = z.discriminatedUnion('type', [
     type: z.literal('min_score'),
     min_score: z.number().min(0).max(100),
   }),
+  // Hand-picked names: buy exactly these tickers (re-bought when flat), ignoring
+  // the daily scan. Lets you run any exit style — incl. ratchet — on stocks YOU
+  // choose. 1–20 symbols; the Python side re-validates the format.
+  z.object({
+    type: z.literal('tickers'),
+    symbols: z.array(z.string().trim().toUpperCase()).min(1).max(20),
+  }),
 ]);
 
 export const stopSchema = z.discriminatedUnion('mode', [
@@ -142,7 +149,9 @@ export function describeParams(p: PlaygroundParams): string {
       ? 'every strong buy'
       : p.buy_rule.type === 'top_n'
         ? `the top ${p.buy_rule.n} strong buy${p.buy_rule.n === 1 ? '' : 's'} by score`
-        : `strong buys scoring ≥ ${p.buy_rule.min_score}`;
+        : p.buy_rule.type === 'tickers'
+          ? `your picked names (${p.buy_rule.symbols.join(', ')})`
+          : `strong buys scoring ≥ ${p.buy_rule.min_score}`;
   const sizing =
     p.size_mode === 'equal_split'
       ? 'capital split equally across the day’s buys'
@@ -192,7 +201,11 @@ export function describePlan(p: PlaygroundParams, capital: number): string {
     // each slice is capital ÷ that count. No fixed per-name budget, so the
     // price-ceiling problem essentially goes away.
     const n =
-      p.buy_rule.type === 'top_n' ? Math.min(p.buy_rule.n, p.max_positions) : p.max_positions;
+      p.buy_rule.type === 'top_n'
+        ? Math.min(p.buy_rule.n, p.max_positions)
+        : p.buy_rule.type === 'tickers'
+          ? Math.min(p.buy_rule.symbols.length || 1, p.max_positions)
+          : p.max_positions;
     const slice = Math.round(capital / Math.max(1, n));
     return (
       `Splits the cash equally across the names it buys, so it's always ~fully invested. ` +
@@ -238,11 +251,16 @@ export function paramsSpec(p: PlaygroundParams, capital: number): Array<[string,
       ? 'every strong buy'
       : p.buy_rule.type === 'top_n'
         ? `top ${p.buy_rule.n} by score`
-        : `score ≥ ${p.buy_rule.min_score}`;
+        : p.buy_rule.type === 'tickers'
+          ? `picked: ${p.buy_rule.symbols.join(', ')}`
+          : `score ≥ ${p.buy_rule.min_score}`;
 
+  // Hand-picked names ignore the scan → the plain-BUY flag is irrelevant.
+  const buysLabel =
+    p.buy_rule.type === 'tickers' ? rule : rule + (p.include_plain_buys ? ' + plain' : '');
   const spec: Array<[string, string]> = [
     ['capital', `$${capital.toLocaleString()}`],
-    ['buys', rule + (p.include_plain_buys ? ' + plain' : '')],
+    ['buys', buysLabel],
     ['size', p.size_mode === 'equal_split' ? 'equal split' : `${p.size_pct}%`],
     ['max open', String(p.max_positions)],
   ];

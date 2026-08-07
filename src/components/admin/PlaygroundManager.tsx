@@ -344,7 +344,22 @@ export default function PlaygroundManager({
   // form state
   const [name, setName] = useState('');
   const [capital, setCapital] = useState(25_000);
-  const [ruleType, setRuleType] = useState<'top_n' | 'all' | 'min_score'>('top_n');
+  const [ruleType, setRuleType] = useState<'top_n' | 'all' | 'min_score' | 'tickers'>('top_n');
+  const [tickerText, setTickerText] = useState('');
+  // Parse the free-text ticker box into clean symbols (comma/space/newline sep).
+  const pickedSymbols = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          tickerText
+            .toUpperCase()
+            .split(/[\s,]+/)
+            .map((s) => s.trim())
+            .filter((s) => /^[A-Z][A-Z0-9.\-]{0,9}$/.test(s)),
+        ),
+      ).slice(0, 20),
+    [tickerText],
+  );
   const [plainBuys, setPlainBuys] = useState(false);
   const [exitMode, setExitMode] = useState<'managed' | 'bracket' | 'ratchet'>('managed');
   const [ratchetSteps, setRatchetSteps] = useState<RatchetStep[]>(
@@ -430,7 +445,9 @@ export default function PlaygroundManager({
           ? { type: 'top_n', n: topN }
           : ruleType === 'all'
             ? { type: 'all' }
-            : { type: 'min_score', min_score: minScore },
+            : ruleType === 'tickers'
+              ? { type: 'tickers', symbols: pickedSymbols }
+              : { type: 'min_score', min_score: minScore },
       include_plain_buys: plainBuys,
       exit_mode: exitMode,
       ratchet_steps: ratchetSteps,
@@ -446,6 +463,7 @@ export default function PlaygroundManager({
       ruleType,
       topN,
       minScore,
+      pickedSymbols,
       // plainBuys + exitMode + sizeMode + ratchetSteps feed the params body;
       // omitting them left the live preview stale when a toggle changed.
       plainBuys,
@@ -482,6 +500,7 @@ export default function PlaygroundManager({
     setRuleType(p.buy_rule.type);
     if (p.buy_rule.type === 'top_n') setTopN(p.buy_rule.n);
     if (p.buy_rule.type === 'min_score') setMinScore(p.buy_rule.min_score);
+    if (p.buy_rule.type === 'tickers') setTickerText(p.buy_rule.symbols.join(', '));
     setPlainBuys(p.include_plain_buys);
     setExitMode(p.exit_mode);
     setRatchetSteps(
@@ -637,23 +656,27 @@ export default function PlaygroundManager({
                 <option value="top_n">Top N strong buys</option>
                 <option value="all">Every strong buy</option>
                 <option value="min_score">Score threshold</option>
+                <option value="tickers">Specific tickers (my picks)</option>
               </select>
               <p className={HELP}>
-                Which of the day's STRONG BUYs to buy (the scan finds ~5–20/day, median 13 — but
-                some days have zero).
+                {ruleType === 'tickers'
+                  ? 'Ignores the daily scan — buys exactly the names you list, and re-buys any it isn’t holding each day. Great for running an exit style (e.g. ratchet) on a stock you choose.'
+                  : "Which of the day's STRONG BUYs to buy (the scan finds ~5–20/day, median 13 — but some days have zero)."}
               </p>
-              <label className="mt-2 flex cursor-pointer items-start gap-2 text-[11px] text-text-muted">
-                <input
-                  type="checkbox"
-                  checked={plainBuys}
-                  onChange={(e) => setPlainBuys(e.target.checked)}
-                  className="mt-0.5 accent-[var(--color-accent)]"
-                />
-                <span>
-                  Include plain BUYs (second tier, scores ~80–90). Keeps the portfolio active on
-                  days when the scan has no STRONG BUYs at all.
-                </span>
-              </label>
+              {ruleType !== 'tickers' && (
+                <label className="mt-2 flex cursor-pointer items-start gap-2 text-[11px] text-text-muted">
+                  <input
+                    type="checkbox"
+                    checked={plainBuys}
+                    onChange={(e) => setPlainBuys(e.target.checked)}
+                    className="mt-0.5 accent-[var(--color-accent)]"
+                  />
+                  <span>
+                    Include plain BUYs (second tier, scores ~80–90). Keeps the portfolio active on
+                    days when the scan has no STRONG BUYs at all.
+                  </span>
+                </label>
+              )}
             </div>
             {ruleType === 'top_n' && (
               <div>
@@ -689,6 +712,26 @@ export default function PlaygroundManager({
                   onChange={(e) => setMinScore(Number(e.target.value))}
                 />
                 <p className={HELP}>Engine composite score. Recent strong buys score ~90–99.</p>
+              </div>
+            )}
+            {ruleType === 'tickers' && (
+              <div className="sm:col-span-2">
+                <label htmlFor="pg-tickers" className={LABEL}>
+                  Tickers ({pickedSymbols.length}/20)
+                </label>
+                <input
+                  id="pg-tickers"
+                  className={INPUT}
+                  type="text"
+                  placeholder="AAPL, MSFT, NVDA"
+                  value={tickerText}
+                  onChange={(e) => setTickerText(e.target.value)}
+                />
+                <p className={HELP}>
+                  Comma- or space-separated. {pickedSymbols.length > 0 ? 'Buying: ' : ''}
+                  {pickedSymbols.join(', ') || 'enter at least one valid symbol.'} Use a fixed or
+                  capped stop (there’s no engine structural stop for a picked name).
+                </p>
               </div>
             )}
             <div>
