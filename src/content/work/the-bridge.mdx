@@ -1,6 +1,6 @@
 ---
-title: 'The Bridge: an AI crew that runs this site'
-blurb: Five agents operate ruslanshulga.com in public. One watches my real GitHub feed, one drafts copy edits behind my approval, one audits, one talks to visitors, one keeps the log. Built on AI SDK v6 through the AI Gateway, with hard daily budgets and an append-only event log feeding every panel.
+title: 'The Bridge: the AI crew that maintains this site'
+blurb: This site maintains itself. Five agents do the upkeep in public. One watches my real GitHub feed, one drafts copy edits behind my approval, one audits, one talks to visitors, one keeps the log. Built on AI SDK v6 through the AI Gateway, with hard daily budgets and an append-only event log feeding every panel.
 stack:
   - AI SDK v6
   - Vercel AI Gateway
@@ -25,14 +25,18 @@ The site had three separate AI gimmicks: a simulated agent world, a creature gar
 
 ## The shape
 
-A starship bridge, rendered as a live page. Five agents with real jobs: Scout files my actual GitHub pushes with links and matching timestamps. Curator composes recruiter briefings on request and drafts copy fixes for the site itself. Critic audits that copy daily against my own writing rules and reviews every Curator draft before it reaches me. Envoy takes visitor questions and dispatches missions. Archivist keeps the append-only event log that every panel reads from.
+A maintenance crew for the site itself, working in public. Five agents with real jobs: Scout files my actual GitHub pushes with links and matching timestamps, and keeps a CI watch on key branches. Curator composes recruiter briefings on request and drafts copy fixes for the site. Critic audits that copy daily against my own writing rules and reviews every Curator draft before it reaches me. Envoy takes visitor questions and dispatches missions. Archivist keeps the append-only event log that every panel reads from.
 
-The engine is deterministic and fully unit-tested; a Haiku-class model only repaints the wording of channel lines, with a guard that rejects any rephrasing that drops a number. Visitor-facing work runs on a frontier model, only on explicit trigger. Autonomy comes from a free GitHub Actions heartbeat every 3 hours plus visitor-triggered ticks behind a 90-second cadence gate and a lease lock in Turso.
+The engine is deterministic and fully unit-tested; a Haiku-class model only repaints the wording of status lines, with a guard that rejects any rephrasing that drops a number. Visitor-facing work runs on a frontier model, only on explicit trigger. Autonomy comes from a free GitHub Actions heartbeat every 3 hours plus visitor-triggered ticks behind a 90-second cadence gate and a lease lock in Turso.
 
 ## The honesty rules
 
-Every event is real or it doesn't exist. The LIVE badge is computed from timestamps, never asserted. Idle shows as OFF DUTY with the next heartbeat time. Deep links go to actual commits, and the public cost meter shows real dollars. When Critic rejects Curator's draft twice, the failed mission stays in the log. Corrections are content.
+Every event is real or it doesn't exist. The LIVE badge is computed from timestamps, never asserted. Idle shows as OFF DUTY with the next heartbeat window. Deep links go to actual commits, and the public cost meter shows real dollars. When Critic rejects Curator's draft twice, the failed mission stays in the log. Corrections are content.
+
+## The rebuild
+
+The first version wore a starship costume: station consoles, a viewscreen, a red-alert klaxon. The engineering underneath was solid, but the page led with fiction and buried the receipts, and the ambient log narrated idleness. I rebuilt the surface to lead with proof instead: what shipped, what the crew spent, whether CI is green. The work log now shows real actions only, with heartbeat chatter kept in a full log for transparency. Same engine, honest packaging.
 
 ## The part I'd defend in review
 
-Curator can change this site's copy, but only through a whitelisted single-file registry, only after Critic signs off, and only after I approve from my phone. The approved change ships as a real commit through the same pipeline as my own pushes, with a drift check that refuses to apply if the live text moved since the draft. Write access exists; it's just never unsupervised.
+Curator can change this site's copy, but only through a whitelisted single-file registry. A draft needs Critic's sign-off first, then my explicit approval from my phone. The approved change ships as a real commit through the same pipeline as my own pushes, with a drift check that refuses to apply if the live text moved since the draft. Write access exists; it's just never unsupervised.

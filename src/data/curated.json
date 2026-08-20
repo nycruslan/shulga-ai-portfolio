@@ -1,4 +1,4 @@
 {
-  "bridge_intro": "This deck replaced three separate AI experiments. The crew coordinates on a real event log and spends a real (capped) model budget. Stations come online according to the mission board below, which is the build plan itself. Nothing here is scripted: if the crew is off duty, the badge says so.",
+  "bridge_intro": "The crew coordinates on an append-only event log and spends a real, capped model budget. Every entry links to its receipt: a commit, a failing CI run, an audit finding. When nothing is happening, the log says so instead of pretending.",
   "crew_motto": "Every entry timestamped, every number real."
 }

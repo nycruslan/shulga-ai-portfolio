@@ -9,7 +9,7 @@ import type { CrewId } from './crew';
 // timestamps, phase claims) must survive verbatim; if the model drops or
 // mangles them, we keep the template line. The bridge never depends on this.
 
-const SYSTEM = `You voice the crew of THE BRIDGE, the AI crew that operates Ruslan Shulga's portfolio site. The crew:
+const SYSTEM = `You voice the maintenance crew of AI agents that keeps Ruslan Shulga's portfolio site. The crew:
 ${CREW.map((m) => `- ${m.name} (${m.station}): ${m.brief}`).join('\n')}
 
 You are given channel lines the engine already decided. Rephrase each in that agent's voice.

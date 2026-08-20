@@ -13,9 +13,9 @@ import { listMissions } from '../lib/bridge/persistence/missions';
 import { buildBridgeFeed } from '../lib/bridge/feed';
 import curated from '../data/curated.json';
 
-// The Bridge: one AI system instead of three toys. The page server-renders the
-// premise and the first feed payload (instant first paint, no fetch waterfall);
-// the island takes over from there with the live poll + wake tick.
+// The Bridge, receipts-first. The page server-renders the premise and the
+// first feed payload (instant first paint, no fetch waterfall); the island
+// takes over from there with the live poll + wake tick.
 
 const nowIso = new Date().toISOString();
 const [row, events, spend, missions] = turso
@@ -39,7 +39,7 @@ const initial = buildBridgeFeed({
 
 <Layout
   title="The Bridge · Ruslan Shulga"
-  description="Five AI agents run this site: one watches the real GitHub feed, one edits copy behind human approval, one audits, one talks to visitors, one keeps the log. Every event is real and timestamped."
+  description="This site maintains itself. Five AI agents watch the real GitHub feed, audit the copy, draft fixes behind human approval, and ship them as real commits. Every entry is timestamped and real."
   hideAskMe
 >
   <Nav />
@@ -55,16 +55,22 @@ const initial = buildBridgeFeed({
       class="font-display max-w-3xl text-3xl font-medium md:text-5xl"
       style="color: var(--color-text); letter-spacing: -0.02em;"
     >
-      Five AI agents run this site. You're watching them work.
+      This site maintains itself.
     </h1>
 
-    <!-- Editable copy registry: this paragraph is owned by the crew. Critic
-         audits it, Curator drafts fixes, Ruslan approves, and the change ships
-         as a real commit to src/data/curated.json. -->
     <p
       class="mt-6 max-w-2xl text-base leading-relaxed md:text-lg"
       style="color: var(--color-text-muted);"
     >
+      A small crew of AI agents does the upkeep here. It watches my GitHub and audits the site's
+      copy against my own writing rules. When something needs fixing it drafts the change, and after
+      I approve from my phone the fix ships as a real commit.
+    </p>
+
+    <!-- Editable copy registry: this paragraph is owned by the crew. Critic
+         audits it, Curator drafts fixes, Ruslan approves, and the change ships
+         as a real commit to src/data/curated.json. -->
+    <p class="mt-4 max-w-2xl text-base leading-relaxed" style="color: var(--color-text-muted);">
       {curated.bridge_intro}
     </p>
 
@@ -75,7 +81,7 @@ const initial = buildBridgeFeed({
           class="rounded-lg p-6 font-mono text-sm"
           style="background: var(--color-bg-elevated); border: 1px solid var(--color-border); color: var(--color-text-subtle);"
         >
-          Hailing the bridge…
+          Loading the work log…
         </div>
       </BridgeView>
     </div>
@@ -83,17 +89,17 @@ const initial = buildBridgeFeed({
     <section
       class="mt-12 rounded-lg p-5"
       style="background: var(--color-bg-elevated); border: 1px solid var(--color-border);"
-      aria-label="Briefing room for recruiters"
+      aria-label="Recruiter briefing, assembled live"
     >
       <p
         class="mb-4 font-mono text-[10px] tracking-widest uppercase"
         style="color: var(--color-text-subtle);"
       >
-        Briefing room — for recruiters, assembled live
+        Recruiter briefing — assembled live from real case studies
       </p>
       <BriefingRoom client:only="react" online={initial.commsOnline}>
         <p slot="fallback" class="font-mono text-xs" style="color: var(--color-text-subtle);">
-          Unlocking the briefing room…
+          Opening the briefing desk…
         </p>
       </BriefingRoom>
     </section>

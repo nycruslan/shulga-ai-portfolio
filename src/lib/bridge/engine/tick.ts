@@ -54,13 +54,10 @@ export function buildInitialBridgeWorld(nowIso: string): BridgeWorld {
     lastVisitorAt: null,
     crew: {
       // lastSpokeTick: -1 = has not spoken; 0 would mute everyone on tick 1.
-      scout: { status: 'Sensors warming up. First GitHub sweep this watch.', lastSpokeTick: -1 },
-      curator: {
-        status: 'Briefing room open. Editing tools arrive in Phase 5.',
-        lastSpokeTick: -1,
-      },
+      scout: { status: 'First GitHub sweep coming up.', lastSpokeTick: -1 },
+      curator: { status: 'Copy desk open.', lastSpokeTick: -1 },
       critic: { status: 'Watching the budget meter.', lastSpokeTick: -1 },
-      envoy: { status: 'On comms. Listening for visitors.', lastSpokeTick: -1 },
+      envoy: { status: 'Listening for visitor questions.', lastSpokeTick: -1 },
       archivist: { status: 'Keeping the log.', lastSpokeTick: -1 },
     },
     scout: initialScoutState(),
@@ -113,38 +110,38 @@ const AMBIENT_LINES: LineTemplate[] = [
       const alert = activeCiAlert(w.scout);
       if (alert) {
         const since = alert.redSince ? ` since ${alert.redSince.slice(11, 16)}Z` : '';
-        return `Red alert. CI failing on ${alert.repo.split('/')[1]}${since}.`;
+        return `CI failing on ${alert.repo.split('/')[1]}${since}. Watching for the fix.`;
       }
       return w.scout.lastError
         ? `${w.scout.lastError} Retrying next sweep.`
         : w.scout.lastCommit
-          ? `Sensors green. Last push: ${w.scout.lastCommit.repo.split('/')[1]} at ${w.scout.lastCommit.at.slice(11, 16)}Z.`
-          : 'Sensors green. Watching the GitHub feed; nothing new yet.';
+          ? `GitHub watch clear. Last push: ${w.scout.lastCommit.repo.split('/')[1]} at ${w.scout.lastCommit.at.slice(11, 16)}Z.`
+          : 'GitHub watch clear. Nothing new since the last sweep.';
     },
   },
   {
     actor: 'envoy',
     build: (_t, w) =>
       w.lastVisitorAt
-        ? 'Comms open. Holding the channel for the next visitor.'
-        : 'Comms open. No visitors yet this watch.',
+        ? 'Visitor desk open. Ready for the next question.'
+        : 'Visitor desk open. No questions yet today.',
   },
   {
     actor: 'curator',
     build: (_t, w) =>
       w.audit.lastAuditAt
-        ? `Briefing room open. Last copy audit ${w.audit.lastAuditAt.slice(5, 10)} ${w.audit.lastAuditAt.slice(11, 16)}Z.`
-        : 'Briefing room open. First copy audit comes with the next heartbeat.',
+        ? `Copy desk open. Last audit ${w.audit.lastAuditAt.slice(5, 10)} ${w.audit.lastAuditAt.slice(11, 16)}Z.`
+        : 'Copy desk open. First audit comes with the next heartbeat.',
   },
   {
     actor: 'archivist',
-    build: (_t, w) => `Watch tick ${w.tick}. All entries timestamped and real.`,
+    build: (_t, w) => `Tick ${w.tick} logged. Every entry timestamped and real.`,
   },
   {
     actor: 'critic',
     build: () => {
       const online = CREW.filter((m) => m.online).length;
-      return `Reviewed the roster. ${online} stations online, ${CREW.length - online} waiting on wiring.`;
+      return `Roster check: ${online} agents online, ${CREW.length - online} offline.`;
     },
   },
 ];
@@ -172,7 +169,7 @@ export function planTick(
     if (nowMs - lastVisitorMs >= HAIL_WINDOW_MS) {
       visitorHailed = true;
       const hail =
-        'Visitor on the bridge. Short version: five AI agents run this site, and you are watching them work.';
+        'Visitor arrived. Short version: this site maintains itself, and you are watching the crew that does it.';
       events.push({ actor: 'envoy', kind: 'visitor', summary: hail });
       next.crew.envoy = { status: 'Talking to a visitor.', lastSpokeTick: next.tick };
     }
