@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Room, RoomEvent } from 'livekit-client';
+import { ParticipantKind, Room, RoomEvent } from 'livekit-client';
 import {
   BarVisualizer,
   RoomAudioRenderer,
@@ -47,13 +47,34 @@ export default function TwinConsole() {
 
   useEffect(() => {
     const onDisconnected = () => {
-      setStatus('idle');
+      setStatus((prev) => (prev === 'error' ? prev : 'idle'));
     };
     room.on(RoomEvent.Disconnected, onDisconnected);
     return () => {
       room.off(RoomEvent.Disconnected, onDisconnected);
     };
   }, [room]);
+
+  // Fail loudly when nothing answers the dispatch. A dead worker, a crashed
+  // job, and an avatar provider at its concurrency limit all used to look
+  // like the same spinner forever. If no agent-kind participant is in the
+  // room after 20s, end the session and say so.
+  useEffect(() => {
+    if (status !== 'live') return;
+    const timer = setTimeout(() => {
+      const hasAgent = Array.from(room.remoteParticipants.values()).some(
+        (p) => p.kind === ParticipantKind.AGENT,
+      );
+      if (!hasAgent) {
+        setError(
+          'No agent joined within 20 seconds. The worker may be down, or the avatar provider is at its session limit. Wait a moment and try again.',
+        );
+        setStatus('error');
+        room.disconnect().catch(() => {});
+      }
+    }, 20_000);
+    return () => clearTimeout(timer);
+  }, [status, room]);
 
   const connect = useCallback(async () => {
     setStatus('connecting');
@@ -151,11 +172,13 @@ function LiveSession({ onEnd }: { onEnd: () => void }) {
           <VideoTrack trackRef={videoTrack} className="h-full w-full object-cover" />
         ) : (
           <div className="text-text-subtle absolute inset-0 flex flex-col items-center justify-center gap-3">
-            <span className="font-mono text-xs">waiting for the avatar to join…</span>
+            <span className="font-mono text-xs">
+              {audioTrack ? 'voice-only session' : 'waiting for the avatar to join…'}
+            </span>
             {audioTrack && (
               <span className="font-mono text-[10px]">
-                audio is connected — if this persists, the avatar joined without
-                lk.publish_on_behalf
+                the video could not start this time — you can still talk, or end the
+                session and try again
               </span>
             )}
           </div>
