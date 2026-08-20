@@ -388,6 +388,7 @@ export default function PlaygroundManager({
   const [stopPct, setStopPct] = useState(8);
   const [takeProfit, setTakeProfit] = useState<number | ''>('');
   const [timeLimit, setTimeLimit] = useState(25);
+  const [regimeMaDays, setRegimeMaDays] = useState(0); // 0 = off
 
   const byId = useMemo(() => new Map(results.map((r) => [r.id, r])), [results]);
 
@@ -458,6 +459,7 @@ export default function PlaygroundManager({
       stop: stopMode === 'engine' ? { mode: 'engine' } : { mode: stopMode, pct: stopPct },
       take_profit_pct: takeProfit === '' ? null : takeProfit,
       time_limit_days: timeLimit,
+      regime_ma_days: regimeMaDays,
     }),
     [
       ruleType,
@@ -477,6 +479,7 @@ export default function PlaygroundManager({
       stopPct,
       takeProfit,
       timeLimit,
+      regimeMaDays,
     ],
   );
   const paramsValid = paramsSchema.safeParse(params).success;
@@ -514,6 +517,7 @@ export default function PlaygroundManager({
     if (p.stop.mode !== 'engine') setStopPct(p.stop.pct);
     setTakeProfit(p.take_profit_pct ?? '');
     setTimeLimit(p.time_limit_days);
+    setRegimeMaDays(p.regime_ma_days ?? 0);
     setReplacesId(c.id);
     setShowForm(true);
     setNote({
@@ -826,6 +830,38 @@ export default function PlaygroundManager({
               />
               <p className={HELP}>Auto-sell anything still open after this many days.</p>
             </div>
+          </div>
+
+          <div className="rounded-md border border-white/10 bg-white/[0.02] p-3">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={regimeMaDays > 0}
+                onChange={(e) => setRegimeMaDays(e.target.checked ? 200 : 0)}
+              />
+              Only buy when the market is in an uptrend
+            </label>
+            {regimeMaDays > 0 && (
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-sm text-white/70">SPY above its</span>
+                <input
+                  aria-label="Regime moving-average days"
+                  className={`${INPUT} w-24`}
+                  type="number"
+                  inputMode="numeric"
+                  min={20}
+                  max={300}
+                  value={regimeMaDays}
+                  onChange={(e) => setRegimeMaDays(Number(e.target.value))}
+                />
+                <span className="text-sm text-white/70">day average</span>
+              </div>
+            )}
+            <p className={HELP}>
+              The trend-follower&apos;s risk switch: on red-regime days this book sits in cash
+              instead of buying, and held names keep their exits. 200 is the classic line; 20–300
+              allowed. Off by default.
+            </p>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">

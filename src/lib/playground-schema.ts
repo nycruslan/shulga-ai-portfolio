@@ -109,6 +109,11 @@ export const paramsSchema = z.object({
     .min(LIMITS.timeLimitDays.min)
     .max(LIMITS.timeLimitDays.max)
     .default(25),
+  // Market regime gate (loss reduction): 0 = off. When set, only buy on days SPY
+  // closes above its N-day SMA — the trend-follower's risk switch that keeps
+  // momentum out of downtrending/choppy tapes. Python clamps a non-zero value
+  // to 20–300.
+  regime_ma_days: z.number().int().min(0).max(300).default(0),
 });
 
 export const createPortfolioSchema = z.object({
@@ -161,6 +166,8 @@ export function describeParams(p: PlaygroundParams): string {
     sizing,
     `max ${p.max_positions} open`,
   ];
+  if (p.regime_ma_days > 0)
+    bits.push(`only when SPY is above its ${p.regime_ma_days}-day average (else sit in cash)`);
   if (p.exit_mode === 'bracket') {
     bits.push(
       `then each position sells ONLY at ${p.take_profit_pct != null ? `+${p.take_profit_pct}% profit, ` : ''}its stop, or the ${p.time_limit_days}d limit (simple bracket — no trailing)`,

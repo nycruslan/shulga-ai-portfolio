@@ -269,6 +269,34 @@ describe('ratchet exit mode', () => {
   });
 });
 
+describe('market regime gate', () => {
+  it('defaults to off and accepts a moving-average window', () => {
+    expect(paramsSchema.parse({ buy_rule: { type: 'all' } }).regime_ma_days).toBe(0);
+    expect(
+      paramsSchema.parse({ buy_rule: { type: 'all' }, regime_ma_days: 200 }).regime_ma_days,
+    ).toBe(200);
+  });
+
+  it('rejects a window past the 300-day ceiling', () => {
+    expect(
+      createPortfolioSchema.safeParse({
+        name: 'X',
+        capital: 25_000,
+        params: { buy_rule: { type: 'all' }, regime_ma_days: 400 },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('describeParams names the gate only when it is on', () => {
+    const on = describeParams(
+      paramsSchema.parse({ buy_rule: { type: 'all' }, regime_ma_days: 200 }),
+    );
+    expect(on).toContain('only when SPY is above its 200-day average');
+    const off = describeParams(paramsSchema.parse({ buy_rule: { type: 'all' } }));
+    expect(off).not.toContain('SPY');
+  });
+});
+
 describe('tickers buy mode', () => {
   it('accepts a hand-picked list and upper-cases it', () => {
     const p = paramsSchema.parse({ buy_rule: { type: 'tickers', symbols: ['aapl', 'msft'] } });
