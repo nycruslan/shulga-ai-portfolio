@@ -114,6 +114,11 @@ export const paramsSchema = z.object({
   // momentum out of downtrending/choppy tapes. Python clamps a non-zero value
   // to 20–300.
   regime_ma_days: z.number().int().min(0).max(300).default(0),
+  // Earnings guard (loss reduction): skip buying names that report within ~5
+  // days. On by default — holding into a print is binary risk, not a swing
+  // trade (DVA gapped 12.5 points past its stop through one). Turn off only
+  // to run the "hold through earnings" experiment deliberately.
+  earnings_guard: z.boolean().default(true),
 });
 
 export const createPortfolioSchema = z.object({
@@ -168,6 +173,7 @@ export function describeParams(p: PlaygroundParams): string {
   ];
   if (p.regime_ma_days > 0)
     bits.push(`only when SPY is above its ${p.regime_ma_days}-day average (else sit in cash)`);
+  if (!p.earnings_guard) bits.push('buys straight into earnings reports (guard OFF)');
   if (p.exit_mode === 'bracket') {
     bits.push(
       `then each position sells ONLY at ${p.take_profit_pct != null ? `+${p.take_profit_pct}% profit, ` : ''}its stop, or the ${p.time_limit_days}d limit (simple bracket — no trailing)`,

@@ -297,6 +297,24 @@ describe('market regime gate', () => {
   });
 });
 
+describe('earnings guard', () => {
+  it('defaults on and accepts an explicit opt-out', () => {
+    expect(paramsSchema.parse({ buy_rule: { type: 'all' } }).earnings_guard).toBe(true);
+    expect(
+      paramsSchema.parse({ buy_rule: { type: 'all' }, earnings_guard: false }).earnings_guard,
+    ).toBe(false);
+  });
+
+  it('describeParams warns only when the guard is OFF', () => {
+    const off = describeParams(
+      paramsSchema.parse({ buy_rule: { type: 'all' }, earnings_guard: false }),
+    );
+    expect(off).toContain('straight into earnings');
+    const on = describeParams(paramsSchema.parse({ buy_rule: { type: 'all' } }));
+    expect(on).not.toContain('earnings');
+  });
+});
+
 describe('tickers buy mode', () => {
   it('accepts a hand-picked list and upper-cases it', () => {
     const p = paramsSchema.parse({ buy_rule: { type: 'tickers', symbols: ['aapl', 'msft'] } });

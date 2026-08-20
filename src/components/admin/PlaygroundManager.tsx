@@ -389,6 +389,7 @@ export default function PlaygroundManager({
   const [takeProfit, setTakeProfit] = useState<number | ''>('');
   const [timeLimit, setTimeLimit] = useState(25);
   const [regimeMaDays, setRegimeMaDays] = useState(0); // 0 = off
+  const [earningsGuard, setEarningsGuard] = useState(true);
 
   const byId = useMemo(() => new Map(results.map((r) => [r.id, r])), [results]);
 
@@ -460,6 +461,7 @@ export default function PlaygroundManager({
       take_profit_pct: takeProfit === '' ? null : takeProfit,
       time_limit_days: timeLimit,
       regime_ma_days: regimeMaDays,
+      earnings_guard: earningsGuard,
     }),
     [
       ruleType,
@@ -480,6 +482,7 @@ export default function PlaygroundManager({
       takeProfit,
       timeLimit,
       regimeMaDays,
+      earningsGuard,
     ],
   );
   const paramsValid = paramsSchema.safeParse(params).success;
@@ -518,6 +521,7 @@ export default function PlaygroundManager({
     setTakeProfit(p.take_profit_pct ?? '');
     setTimeLimit(p.time_limit_days);
     setRegimeMaDays(p.regime_ma_days ?? 0);
+    setEarningsGuard(p.earnings_guard !== false);
     setReplacesId(c.id);
     setShowForm(true);
     setNote({
@@ -861,6 +865,23 @@ export default function PlaygroundManager({
               The trend-follower&apos;s risk switch: on red-regime days this book sits in cash
               instead of buying, and held names keep their exits. 200 is the classic line; 20–300
               allowed. Off by default.
+            </p>
+          </div>
+
+          <div className="rounded-md border border-white/10 bg-white/[0.02] p-3">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={earningsGuard}
+                onChange={(e) => setEarningsGuard(e.target.checked)}
+              />
+              Skip stocks about to report earnings
+            </label>
+            <p className={HELP}>
+              No new buys within ~5 days of an earnings report — a print can gap straight through
+              any stop (DVA: 12.5 points past its stop). Positions already held get closed the day
+              before the report unless they&apos;re up 5%+. On by default; turn off to deliberately
+              trade through earnings.
             </p>
           </div>
 
