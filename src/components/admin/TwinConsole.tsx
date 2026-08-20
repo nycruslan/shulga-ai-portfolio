@@ -177,8 +177,8 @@ function LiveSession({ onEnd }: { onEnd: () => void }) {
             </span>
             {audioTrack && (
               <span className="font-mono text-[10px]">
-                the video could not start this time — you can still talk, or end the
-                session and try again
+                the video could not start this time — you can still talk, or end the session and try
+                again
               </span>
             )}
           </div>
