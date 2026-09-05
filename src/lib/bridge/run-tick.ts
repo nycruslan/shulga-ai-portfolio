@@ -39,10 +39,7 @@ const GITHUB_USERNAME = about.github.split('/').pop() ?? 'nycruslan';
 // events feed can't cover this: workflow runs never appear in a user's public
 // event stream, which is how a three-day-red build once went unreported while
 // Scout kept saying "sensors green".
-const CI_WATCHED = [
-  { repo: `${GITHUB_USERNAME}/shulga-ai-portfolio`, branch: 'master' },
-  { repo: `${GITHUB_USERNAME}/portfolio-copilot`, branch: 'main' },
-];
+const CI_WATCHED = [{ repo: `${GITHUB_USERNAME}/shulga-ai-portfolio`, branch: 'master' }];
 
 /**
  * The read-only copy surface for Critic's site-wide sweep: every corpus chunk
