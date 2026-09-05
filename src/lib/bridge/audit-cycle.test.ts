@@ -19,6 +19,7 @@ import {
   keyIsBlocked,
   decideProposal,
   createProposal,
+  claimProposal,
 } from './persistence/proposals';
 import { listMissions } from './persistence/missions';
 import curated from '../../data/curated.json';
@@ -300,10 +301,57 @@ describe('runAuditCycle', () => {
       NOW,
     );
     expect(await keyIsBlocked(client, 'intro', NOW)).toBe(true);
-    await decideProposal(client, id, { status: 'rejected', decidedBy: 'ruslan' }, NOW);
+    const claimToken = crypto.randomUUID();
+    await claimProposal(client, id, claimToken, NOW);
+    await decideProposal(client, id, { status: 'rejected', decidedBy: 'ruslan', claimToken }, NOW);
     expect(await keyIsBlocked(client, 'intro', NOW)).toBe(true); // 7-day cool-off
     const later = new Date(Date.parse(NOW) + 8 * 24 * 3600_000).toISOString();
     expect(await keyIsBlocked(client, 'intro', later)).toBe(false);
+  });
+});
+
+describe('proposal claims', () => {
+  it('lets one approver claim and requires that token to decide', async () => {
+    const client = db();
+    const id = await createProposal(
+      client,
+      { key: 'intro', oldText: 'a', newText: 'b', finding: 'f', attempts: 1 },
+      NOW,
+    );
+    const tokens = [crypto.randomUUID(), crypto.randomUUID()];
+    const claims = await Promise.all(tokens.map((token) => claimProposal(client, id, token, NOW)));
+    expect(claims.filter(Boolean)).toHaveLength(1);
+
+    const winningToken = tokens[claims.findIndex(Boolean)];
+    const losingToken = tokens[claims.findIndex((claimed) => !claimed)];
+    expect(
+      await decideProposal(
+        client,
+        id,
+        { status: 'rejected', decidedBy: 'other', claimToken: losingToken },
+        NOW,
+      ),
+    ).toBe(false);
+
+    const replacementToken = crypto.randomUUID();
+    const afterExpiry = new Date(Date.parse(NOW) + 2 * 60_000 + 1).toISOString();
+    expect(await claimProposal(client, id, replacementToken, afterExpiry)).toBe(true);
+    expect(
+      await decideProposal(
+        client,
+        id,
+        { status: 'rejected', decidedBy: 'stale', claimToken: winningToken },
+        afterExpiry,
+      ),
+    ).toBe(false);
+    expect(
+      await decideProposal(
+        client,
+        id,
+        { status: 'rejected', decidedBy: 'owner', claimToken: replacementToken },
+        afterExpiry,
+      ),
+    ).toBe(true);
   });
 });
 

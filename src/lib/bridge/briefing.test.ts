@@ -13,7 +13,7 @@ import {
 import type { EnvoyKnowledge } from './agents/envoy';
 import { listMissions } from './persistence/missions';
 import { listEvents } from './persistence/events';
-import { daySpend } from './persistence/budget';
+import { daySpend, reserveCall } from './persistence/budget';
 
 const NOW = '2026-06-12T12:00:00.000Z';
 const db = () => createClient({ url: ':memory:' });
@@ -100,6 +100,7 @@ describe('runBriefing (mock Curator, real Output.array path)', () => {
   it('streams sections as same-id data parts, validates links, logs the mission, records spend', async () => {
     const client = db();
     const { chunks, writer } = collect();
+    expect(await reserveCall(client, 'briefing', 30, NOW)).toBe(true);
 
     await runBriefing({
       client,
@@ -139,7 +140,7 @@ describe('runBriefing (mock Curator, real Output.array path)', () => {
     expect(events.filter((e) => e.kind === 'mission')).toHaveLength(2);
 
     // Spend on the meter, with real token counts from the run.
-    const spend = await daySpend(client, NOW, 'curator');
+    const spend = await daySpend(client, NOW, 'briefing');
     expect(spend.llmCalls).toBe(1);
     expect(spend.inputTokens).toBe(900);
     expect(spend.costUsd).toBeGreaterThan(0);
@@ -163,7 +164,7 @@ describe('runBriefing (mock Curator, real Output.array path)', () => {
     const sections = chunks.filter((c) => c.type === 'data-briefingSection');
     expect(sections).toHaveLength(1);
     expect((sections[0].data as BriefingSectionData).href).toBe('/work/hybrid-rag');
-    expect((await daySpend(client, NOW, 'curator')).llmCalls).toBe(0);
+    expect((await daySpend(client, NOW, 'briefing')).llmCalls).toBe(0);
     expect((await listMissions(client))[0].status).toBe('done');
   });
 
@@ -175,6 +176,7 @@ describe('runBriefing (mock Curator, real Output.array path)', () => {
         throw new Error('model exploded');
       },
     });
+    expect(await reserveCall(client, 'briefing', 30, NOW)).toBe(true);
     await expect(
       runBriefing({
         client,

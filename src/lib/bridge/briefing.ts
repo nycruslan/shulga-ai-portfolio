@@ -5,7 +5,7 @@ import { about } from '../../data/about';
 import type { EnvoyKnowledge } from './agents/envoy';
 import { appendEvent } from './persistence/events';
 import { completeMission, createMission } from './persistence/missions';
-import { recordSpend } from './persistence/budget';
+import { finalizeSpend } from './persistence/budget';
 import { estimateCostUsd } from './pricing';
 
 // The Briefing Room: a recruiter types one line about their role and watches
@@ -18,20 +18,25 @@ import { estimateCostUsd } from './pricing';
 
 export const CURATOR_MODEL = 'anthropic/claude-sonnet-4.6';
 
-export type BriefingSectionData = {
-  index: number;
-  title: string;
-  body: string;
-  /** Validated link to a real case study or commit; never model-invented. */
-  href?: string;
-  linkLabel?: string;
-  status: 'ready';
-};
+const sectionCopySchema = z.object({
+  title: z.string().max(70),
+  body: z.string().max(800),
+});
 
-export type BriefingStatusData = {
-  stage: 'dossier' | 'composing' | 'done' | 'failed';
-  note: string;
-};
+export const briefingSectionDataSchema = sectionCopySchema.extend({
+  index: z.number().int().min(0).max(10),
+  href: z.string().max(200).optional(),
+  linkLabel: z.string().max(100).optional(),
+  status: z.literal('ready'),
+});
+
+export const briefingStatusDataSchema = z.object({
+  stage: z.enum(['dossier', 'composing', 'done', 'failed']),
+  note: z.string().max(300),
+});
+
+export type BriefingSectionData = z.infer<typeof briefingSectionDataSchema>;
+export type BriefingStatusData = z.infer<typeof briefingStatusDataSchema>;
 
 export type BriefingUIMessage = UIMessage<
   never,
@@ -47,9 +52,7 @@ export type BriefingWriter = {
   write: (chunk: BriefingChunk) => void;
 };
 
-const sectionSchema = z.object({
-  title: z.string().max(70),
-  body: z.string().max(800),
+const sectionSchema = sectionCopySchema.extend({
   projectSlug: z
     .string()
     .optional()
@@ -64,7 +67,7 @@ export type BriefingDossier = {
   lastShipped: { repo: string; title: string; at: string; url: string } | null;
 };
 
-/** Visitor input lands in the public log and missions board; keep it tame. */
+/** Normalize the private recruiter prompt before storage and model use. */
 export function sanitizeRole(input: string): string {
   return input
     .replace(/[\r\n\t]+/g, ' ')
@@ -120,6 +123,7 @@ export type RunBriefingDeps = {
   /** Dev/no-key path: skip the LLM and assemble these instead. */
   scripted?: Array<{ title: string; body: string; projectSlug?: string }>;
   scriptedDelayMs?: number;
+  abortSignal?: AbortSignal;
 };
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -155,7 +159,7 @@ export async function runBriefing(deps: RunBriefingDeps): Promise<void> {
 
   const missionId = await createMission(
     client,
-    { title: `Briefing: ${role}`, brief: role, assignee: 'curator', visitorId },
+    { title: 'Recruiter briefing', brief: role, assignee: 'curator', visitorId },
     nowIso,
   );
   await appendEvent(
@@ -163,7 +167,7 @@ export async function runBriefing(deps: RunBriefingDeps): Promise<void> {
     {
       actor: 'curator',
       kind: 'mission',
-      summary: `Mission #${missionId}: composing a briefing for "${role}".`,
+      summary: `Mission #${missionId}: composing a private recruiter briefing.`,
       missionId,
     },
     nowIso,
@@ -201,6 +205,7 @@ export async function runBriefing(deps: RunBriefingDeps): Promise<void> {
         output: Output.array({ element: sectionSchema }),
         maxOutputTokens: 1500,
         maxRetries: 1,
+        abortSignal: deps.abortSignal,
       });
 
       // partialOutputStream emits the validated array as it grows; each new
@@ -219,9 +224,9 @@ export async function runBriefing(deps: RunBriefingDeps): Promise<void> {
         inputTokens: usage.inputTokens ?? 0,
         outputTokens: usage.outputTokens ?? 0,
       };
-      await recordSpend(
+      await finalizeSpend(
         client,
-        { agent: 'curator', ...tokens, costUsd: estimateCostUsd(CURATOR_MODEL, tokens) },
+        { agent: 'briefing', ...tokens, costUsd: estimateCostUsd(CURATOR_MODEL, tokens) },
         nowIso,
       );
     }

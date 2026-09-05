@@ -4,7 +4,7 @@ import { auditCopy, auditReadOnlyCopy, findingFingerprint, type AuditState } fro
 import type { BridgeEventInput } from './persistence/events';
 import { createProposal, keyIsBlocked } from './persistence/proposals';
 import { createMission, setMissionStatus, completeMission } from './persistence/missions';
-import { recordSpend } from './persistence/budget';
+import { finalizeSpend, reserveCall } from './persistence/budget';
 import { draftRevision, DRAFT_MODEL } from './curator-draft';
 import { estimateCostUsd } from './pricing';
 
@@ -92,6 +92,16 @@ export async function runAuditCycle(deps: {
     return { state, events };
   }
 
+  if (!(await reserveCall(client, 'curator', 20, nowIso))) {
+    events.push({
+      actor: 'curator',
+      kind: 'audit',
+      summary:
+        "Curator reached today's model budget. The finding remains queued for the next audit.",
+    });
+    return { state, events };
+  }
+
   const keyFindings = findings.filter((f) => f.key === targetKey);
   const oldText = entries[targetKey];
   const missionId = await createMission(
@@ -111,7 +121,7 @@ export async function runAuditCycle(deps: {
     model: draftModel,
   });
   if (draft.usage.inputTokens + draft.usage.outputTokens > 0) {
-    await recordSpend(
+    await finalizeSpend(
       client,
       { agent: 'curator', ...draft.usage, costUsd: estimateCostUsd(DRAFT_MODEL, draft.usage) },
       nowIso,

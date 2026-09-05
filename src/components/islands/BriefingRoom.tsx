@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import type { BriefingSectionData, BriefingStatusData } from '../../lib/bridge/briefing';
@@ -11,13 +11,15 @@ import type { BriefingSectionData, BriefingStatusData } from '../../lib/bridge/b
 type Props = { online: boolean };
 
 function uid(prefix: string) {
-  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+  return `${prefix}-${crypto.randomUUID()}`;
 }
+
+const ID_RE = /^brf-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function getStored(key: string, prefix: string): string {
   try {
     const v = localStorage.getItem(key);
-    if (v) return v;
+    if (v && ID_RE.test(v)) return v;
     const fresh = uid(prefix);
     localStorage.setItem(key, fresh);
     return fresh;
@@ -44,29 +46,10 @@ function sectionsOf(messages: UIMessage[]): BriefingSectionData[] {
 }
 
 export default function BriefingRoom({ online }: Props) {
-  const visitorId = useMemo(() => getStored('bridge-visitor-id', 'vis'), []);
   const [briefingId, setBriefingId] = useState(() => getStored('bridge-briefing-id', 'brf'));
   // Keyed by id: switching briefings invalidates the load without a sync reset.
   const [loaded, setLoaded] = useState<{ id: string; messages: UIMessage[] } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/bridge/conversation.json?id=${encodeURIComponent(briefingId)}`)
-      .then((r) => (r.ok ? r.json() : { messages: [] }))
-      .then((d) => {
-        if (!cancelled) setLoaded({ id: briefingId, messages: d.messages ?? [] });
-      })
-      .catch(() => {
-        if (!cancelled) setLoaded({ id: briefingId, messages: [] });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [briefingId]);
-
-  const initialMessages = loaded?.id === briefingId ? loaded.messages : null;
-
-  const reset = () => {
+  const reset = useCallback(() => {
     const fresh = uid('brf');
     try {
       localStorage.setItem('bridge-briefing-id', fresh);
@@ -74,7 +57,35 @@ export default function BriefingRoom({ online }: Props) {
       /* storage unavailable; the in-memory id still rotates */
     }
     setBriefingId(fresh);
-  };
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch(`/api/bridge/conversation.json?id=${encodeURIComponent(briefingId)}`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (response.status === 409) {
+          reset();
+          return null;
+        }
+        return response.ok ? response.json() : { messages: [] };
+      })
+      .then((data) => {
+        if (data && !controller.signal.aborted) {
+          setLoaded({
+            id: briefingId,
+            messages: Array.isArray(data.messages) ? data.messages : [],
+          });
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setLoaded({ id: briefingId, messages: [] });
+      });
+    return () => controller.abort();
+  }, [briefingId, reset]);
+
+  const initialMessages = loaded?.id === briefingId ? loaded.messages : null;
 
   if (!online) {
     return (
@@ -94,7 +105,6 @@ export default function BriefingRoom({ online }: Props) {
     <BriefingSession
       key={briefingId}
       briefingId={briefingId}
-      visitorId={visitorId}
       initialMessages={initialMessages}
       onReset={reset}
     />
@@ -103,26 +113,27 @@ export default function BriefingRoom({ online }: Props) {
 
 function BriefingSession({
   briefingId,
-  visitorId,
   initialMessages,
   onReset,
 }: {
   briefingId: string;
-  visitorId: string;
   initialMessages: UIMessage[];
   onReset: () => void;
 }) {
   const [input, setInput] = useState('');
   const [stage, setStage] = useState<BriefingStatusData | null>(null);
 
-  const { messages, sendMessage, status, error } = useChat({
+  const { messages, sendMessage, status, error, stop } = useChat({
     messages: initialMessages,
     transport: new DefaultChatTransport({
       api: '/api/bridge/briefing',
-      body: { briefingId, visitorId },
+      body: { briefingId },
     }),
     onData: (part) => {
       if (part.type === 'data-briefingStatus') setStage(part.data as BriefingStatusData);
+    },
+    onError: (requestError) => {
+      if (/ownership expired|already processed/i.test(requestError.message)) onReset();
     },
   });
 
@@ -130,7 +141,7 @@ function BriefingSession({
   const busy = status === 'submitted' || status === 'streaming';
   const hasBriefing = sections.length > 0;
 
-  const submit = (e: React.FormEvent) => {
+  const submit = (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     const trimmed = input.trim();
     if (trimmed.length < 8 || busy) return;
@@ -146,9 +157,9 @@ function BriefingSession({
           className="max-w-2xl text-sm leading-relaxed"
           style={{ color: 'var(--color-text-muted)' }}
         >
-          Hiring? Describe the role in one sentence and the crew assembles a briefing for you, live:
-          Scout compiles the dossier from real case studies and the latest commits, Curator writes
-          it. Sections land as they're finished, links included.
+          Hiring? Describe the role in one sentence and the crew assembles a private briefing for
+          this browser, live. The public mission board only shows that a briefing ran. Your role
+          text and conversation are not published.
         </p>
       )}
 
@@ -167,11 +178,12 @@ function BriefingSession({
           }}
         />
         <button
-          type="submit"
-          disabled={busy || input.trim().length < 8}
+          type={busy ? 'button' : 'submit'}
+          onClick={busy ? () => void stop() : undefined}
+          disabled={!busy && input.trim().length < 8}
           className="bridge-btn rounded-md px-4 py-2 font-mono text-xs"
         >
-          {busy ? 'assembling…' : 'assemble briefing'}
+          {busy ? 'stop' : 'assemble briefing'}
         </button>
         {hasBriefing && !busy && (
           <button
@@ -198,7 +210,7 @@ function BriefingSession({
       )}
       {error && (
         <p className="font-mono text-xs" style={{ color: 'var(--color-warning)' }}>
-          {error.message.includes('429')
+          {/rate limit|budget cap/i.test(error.message)
             ? 'Rate limited (3 briefings per hour). Try again later.'
             : 'Composition failed. Send the role line again.'}
         </p>

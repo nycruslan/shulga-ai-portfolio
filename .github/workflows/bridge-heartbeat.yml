@@ -10,22 +10,38 @@ on:
     - cron: '0 */3 * * *'
   workflow_dispatch: {}
 
+permissions: {}
+
 jobs:
   beat:
     runs-on: ubuntu-latest
+    timeout-minutes: 3
     steps:
       - name: Tick the bridge
         env:
           # Override with a repo variable BRIDGE_TICK_URL if the domain differs.
-          URL: ${{ vars.BRIDGE_TICK_URL || 'https://ruslanshulga.com/api/bridge/tick' }}
+          URL: >-
+            ${{ vars.BRIDGE_TICK_URL ||
+            'https://ruslanshulga.com/api/bridge/tick' }}
           TICK_SECRET: ${{ secrets.TICK_SECRET }}
         run: |
+          if [ -z "$TICK_SECRET" ]; then
+            echo "::error::TICK_SECRET is required for heartbeat ticks."
+            exit 1
+          fi
           echo "Ticking $URL"
-          status=$(curl -sS -o /tmp/out.json -w '%{http_code}' -X POST "$URL" \
+          status=$(curl -sS --connect-timeout 10 --max-time 120 \
+            -o /tmp/out.json -w '%{http_code}' -X POST "$URL" \
             -H 'Content-Type: application/json' \
             -H "x-tick-secret: $TICK_SECRET" \
             -d '{}')
           echo "HTTP $status"
           cat /tmp/out.json || true
-          # A locked/cadence response is a normal no-op, not a failure.
-          if [ "$status" -ge 500 ]; then exit 1; fi
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then exit 1; fi
+          # A competing valid heartbeat may own the lease; every other no-op is
+          # operationally significant and must make the scheduled job visible.
+          if ! jq -e '.ok == true or .reason == "locked"' \
+            /tmp/out.json >/dev/null; then
+            echo "::error::Heartbeat did not run."
+            exit 1
+          fi

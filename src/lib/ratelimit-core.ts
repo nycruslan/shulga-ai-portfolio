@@ -12,22 +12,23 @@ export class MemoryLimiter implements RateLimiter {
   constructor(
     private readonly limitCount: number,
     private readonly windowMs: number,
+    private readonly maxKeys = 5000,
   ) {}
   async limit(key: string): Promise<{ success: boolean }> {
     const cutoff = Date.now() - this.windowMs;
     const recent = (this.hits.get(key) ?? []).filter((t) => t > cutoff);
+    // Refresh insertion order so the map doubles as a bounded LRU.
+    this.hits.delete(key);
     if (recent.length >= this.limitCount) {
       this.hits.set(key, recent);
       return { success: false };
     }
     recent.push(Date.now());
     this.hits.set(key, recent);
-    if (this.hits.size > 5000) {
-      for (const [k, v] of this.hits) {
-        const live = v.filter((t) => t > cutoff);
-        if (live.length === 0) this.hits.delete(k);
-        else this.hits.set(k, live);
-      }
+    while (this.hits.size > this.maxKeys) {
+      const oldest = this.hits.keys().next().value;
+      if (oldest === undefined) break;
+      this.hits.delete(oldest);
     }
     return { success: true };
   }

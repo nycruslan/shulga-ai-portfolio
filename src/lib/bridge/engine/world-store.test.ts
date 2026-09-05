@@ -57,7 +57,7 @@ describe('createWorldStore', () => {
     const { store } = makeStore();
     const now = Date.now();
     expect(await store.acquireLock(now, 60_000)).toBe(true);
-    await store.writeState({ tick: 1, note: 'first' }, new Date().toISOString());
+    expect(await store.writeState({ tick: 1, note: 'first' }, new Date().toISOString())).toBe(true);
     const row = await store.readState();
     expect(row?.version).toBe(1);
     expect(row?.world.tick).toBe(1);
@@ -91,6 +91,22 @@ describe('createWorldStore', () => {
     expect(await store.acquireLock(now + 1, 60_000)).toBe(true);
   });
 
+  it('renews only the live lease held by the caller', async () => {
+    const { store } = makeStore();
+    const now = Date.now();
+    const firstToken = now + 60_000;
+    expect(await store.acquireLock(now, 60_000)).toBe(true);
+    const renewedToken = await store.renewLock(firstToken, now + 1_000, 60_000);
+    expect(renewedToken).toBe(now + 61_000);
+    expect(await store.renewLock(firstToken, now + 2_000, 60_000)).toBeNull();
+    expect(
+      await store.writeState({ tick: 1, note: 'stale' }, new Date().toISOString(), firstToken),
+    ).toBe(false);
+    expect(
+      await store.writeState({ tick: 1, note: 'renewed' }, new Date().toISOString(), renewedToken!),
+    ).toBe(true);
+  });
+
   it('an owner-checked write is a no-op once the lease has been taken over', async () => {
     const { store } = makeStore();
     const now = Date.now();
@@ -102,13 +118,17 @@ describe('createWorldStore', () => {
 
     // A finishes late and tries to write with its stale token: rejected, so it
     // can neither overwrite B's world nor clear B's lock.
-    await store.writeState({ tick: 99, note: 'late-A' }, new Date().toISOString(), tokenA);
+    expect(
+      await store.writeState({ tick: 99, note: 'late-A' }, new Date().toISOString(), tokenA),
+    ).toBe(false);
     expect((await store.readState())?.world.note).not.toBe('late-A');
     await store.releaseLock(tokenA);
     expect(await store.acquireLock(now + 3000, 60_000)).toBe(false); // B still holds it
 
     // B writes with its own token: accepted, and the lock clears.
-    await store.writeState({ tick: 1, note: 'B' }, new Date().toISOString(), tokenB);
+    expect(await store.writeState({ tick: 1, note: 'B' }, new Date().toISOString(), tokenB)).toBe(
+      true,
+    );
     expect((await store.readState())?.world.note).toBe('B');
   });
 
@@ -151,7 +171,7 @@ describe('createWorldStore', () => {
       prefix: 'beta',
       buildInitial: () => ({ tick: 0, note: 'beta' }),
     });
-    await a.writeState({ tick: 9, note: 'alpha' }, new Date().toISOString());
+    expect(await a.writeState({ tick: 9, note: 'alpha' }, new Date().toISOString())).toBe(true);
     expect((await a.readState())?.world.note).toBe('alpha');
     expect((await b.readState())?.world.note).toBe('beta');
   });

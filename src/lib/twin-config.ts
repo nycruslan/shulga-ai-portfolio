@@ -73,38 +73,47 @@ export async function readTwinConfig(): Promise<TwinConfig> {
   }
 }
 
+type TwinConfigPatch = Partial<Omit<TwinConfig, 'updatedAt'>>;
+type TwinConfigField = keyof TwinConfigPatch;
+
 /** Upsert. Only the fields present are written; the rest keep their value. */
-export async function writeTwinConfig(patch: Partial<TwinConfig>): Promise<TwinConfig> {
+export async function writeTwinConfig(patch: TwinConfigPatch): Promise<TwinConfig> {
   if (!turso) throw new Error('Turso is not configured.');
   await ensureTable();
-
-  const current = await readTwinConfig();
-  const next: TwinConfig = {
-    ...current,
-    ...patch,
-    facts: patch.facts ? factsSchema.parse(patch.facts) : current.facts,
-    updatedAt: new Date().toISOString(),
-  };
-
+  const now = new Date().toISOString();
   await turso.execute({
-    sql:
-      'INSERT INTO twin_config (id, avatar_id, avatar_provider, avatar_preview_url, ' +
-      'voice_id, voice_name, facts_json, updated_at) VALUES (1, ?, ?, ?, ?, ?, ?, ?) ' +
-      'ON CONFLICT(id) DO UPDATE SET avatar_id = excluded.avatar_id, ' +
-      'avatar_provider = excluded.avatar_provider, ' +
-      'avatar_preview_url = excluded.avatar_preview_url, ' +
-      'voice_id = excluded.voice_id, voice_name = excluded.voice_name, ' +
-      'facts_json = excluded.facts_json, updated_at = excluded.updated_at',
-    args: [
-      next.avatarId,
-      next.avatarProvider,
-      next.avatarPreviewUrl,
-      next.voiceId,
-      next.voiceName,
-      JSON.stringify(next.facts),
-      next.updatedAt,
-    ],
+    sql: "INSERT OR IGNORE INTO twin_config (id, facts_json, updated_at) VALUES (1, '{}', ?)",
+    args: [now],
   });
 
-  return next;
+  const columns: Array<{
+    key: TwinConfigField;
+    column: string;
+    value: string | null | undefined;
+  }> = [
+    { key: 'avatarId', column: 'avatar_id', value: patch.avatarId },
+    { key: 'avatarProvider', column: 'avatar_provider', value: patch.avatarProvider },
+    { key: 'avatarPreviewUrl', column: 'avatar_preview_url', value: patch.avatarPreviewUrl },
+    { key: 'voiceId', column: 'voice_id', value: patch.voiceId },
+    { key: 'voiceName', column: 'voice_name', value: patch.voiceName },
+    {
+      key: 'facts',
+      column: 'facts_json',
+      value: Object.hasOwn(patch, 'facts')
+        ? JSON.stringify(factsSchema.parse(patch.facts))
+        : undefined,
+    },
+  ];
+  const writes = columns.filter((entry) => Object.hasOwn(patch, entry.key));
+  if (writes.some((entry) => entry.value === undefined)) {
+    throw new Error('Twin config fields cannot be undefined.');
+  }
+  if (writes.length) {
+    await turso.execute({
+      sql: `UPDATE twin_config SET ${writes.map((entry) => `${entry.column} = ?`).join(', ')}, updated_at = ? WHERE id = 1`,
+      args: [...writes.map((entry) => entry.value as string | null), now],
+    });
+  }
+
+  return readTwinConfig();
 }

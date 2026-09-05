@@ -11,8 +11,8 @@ import {
 } from './engine/tick';
 import { planCiEvents, planScoutEvents, scoutCheckDue } from './engine/scout';
 import { fetchLatestCiRun, fetchUserActivity, type CiRun } from './github';
-import { appendEvent, countEventsSince } from './persistence/events';
-import { daySpend, recordSpend } from './persistence/budget';
+import { countEventsSince } from './persistence/events';
+import { DAILY_BRIDGE_CALL_CAP, daySpend, finalizeSpend, reserveCall } from './persistence/budget';
 import { NARRATOR_MODEL, narrate } from './narrate';
 import { estimateCostUsd } from './pricing';
 import { failStaleMissions } from './persistence/missions';
@@ -22,6 +22,7 @@ import { DRAFT_MODEL } from './curator-draft';
 import { SHIP_NOTE_DAILY_CAP, SHIP_NOTE_MODEL, writeShipNote } from './ship-note';
 import { getCorpus } from '../portfolio-content';
 import curated from '../../data/curated.json';
+import { commitBridgeTick } from './persistence/commit-tick';
 
 // Thin orchestrator around the pure tick engine: lock, plan, run Scout's
 // GitHub sweep when due, optionally narrate (one Haiku call, budget-gated),
@@ -62,7 +63,7 @@ async function buildReadOnlySurface(): Promise<Record<string, string>> {
 }
 
 export type TickOutcome =
-  | { ran: false; reason: 'unconfigured' | 'cadence' | 'locked' | 'error' }
+  | { ran: false; reason: 'unconfigured' | 'cadence' | 'locked' | 'lease-lost' | 'error' }
   | { ran: true; tick: number; events: number; narrated: boolean };
 
 export async function runTick(trigger: TickTrigger): Promise<TickOutcome> {
@@ -71,17 +72,30 @@ export async function runTick(trigger: TickTrigger): Promise<TickOutcome> {
   const now = new Date();
   const nowIso = now.toISOString();
 
-  const row = await bridgeStore.readState();
-  if (!row) return { ran: false, reason: 'error' };
-  const world = normalizeBridgeWorld(row.world, nowIso);
-  if (!shouldTick(world, trigger, now.getTime())) return { ran: false, reason: 'cadence' };
+  const initialRow = await bridgeStore.readState();
+  if (!initialRow) return { ran: false, reason: 'error' };
+  const initialWorld = normalizeBridgeWorld(initialRow.world, nowIso);
+  if (!shouldTick(initialWorld, trigger, now.getTime())) {
+    return { ran: false, reason: 'cadence' };
+  }
 
-  const lockToken = now.getTime() + TICK_LOCK_MS;
+  let lockToken = now.getTime() + TICK_LOCK_MS;
   if (!(await bridgeStore.acquireLock(now.getTime(), TICK_LOCK_MS))) {
     return { ran: false, reason: 'locked' };
   }
 
   try {
+    // The state may have advanced after the optimistic cadence check but before
+    // this request acquired the lease. Re-read it under the lock so planning
+    // and the final version check use the same snapshot.
+    const row = await bridgeStore.readState();
+    if (!row) throw new Error('Bridge state is unreadable.');
+    const world = normalizeBridgeWorld(row.world, nowIso);
+    if (!shouldTick(world, trigger, now.getTime())) {
+      await bridgeStore.releaseLock(lockToken);
+      return { ran: false, reason: 'cadence' };
+    }
+
     const spend = await daySpend(turso, nowIso);
     const todayStart = `${nowIso.slice(0, 10)}T00:00:00.000Z`;
     const eventsToday = await countEventsSince(turso, todayStart);
@@ -145,18 +159,23 @@ export async function runTick(trigger: TickTrigger): Promise<TickOutcome> {
       }
     }
 
+    // Network work may consume much of the original lease. Do not perform any
+    // model or proposal writes unless this process still owns a live lease.
+    const afterScoutToken = await bridgeStore.renewLock(lockToken, Date.now(), TICK_LOCK_MS);
+    if (afterScoutToken === null) return { ran: false, reason: 'lease-lost' };
+    lockToken = afterScoutToken;
+
     // Curator's ship note: one Haiku call turning fresh commit subjects into a
     // visitor-readable line, gated on Curator's own budget and dropped whole
     // if it fails the deterministic review. Never blocks the tick.
     if (shipCandidate?.repo && AI_GATEWAY_API_KEY) {
-      const curatorCalls = (await daySpend(turso, nowIso, 'curator')).llmCalls;
-      if (curatorCalls < SHIP_NOTE_DAILY_CAP) {
+      if (await reserveCall(turso, 'curator', SHIP_NOTE_DAILY_CAP, nowIso)) {
         const shipNote = await writeShipNote({
           repo: shipCandidate.repo,
           titles: shipCandidate.titles,
         });
         if (shipNote) {
-          await recordSpend(
+          await finalizeSpend(
             turso,
             {
               agent: 'curator',
@@ -184,6 +203,9 @@ export async function runTick(trigger: TickTrigger): Promise<TickOutcome> {
     // Runs BEFORE planTick so the updated audit state lands in the persisted
     // world clone.
     if (trigger === 'heartbeat' && auditDue(world.audit, now.getTime())) {
+      const beforeAuditToken = await bridgeStore.renewLock(lockToken, Date.now(), TICK_LOCK_MS);
+      if (beforeAuditToken === null) return { ran: false, reason: 'lease-lost' };
+      lockToken = beforeAuditToken;
       try {
         const cycle = await runAuditCycle({
           client: turso,
@@ -199,6 +221,9 @@ export async function runTick(trigger: TickTrigger): Promise<TickOutcome> {
         console.error('[bridge] audit cycle failed:', err);
         world.audit = { ...world.audit, lastAuditAt: nowIso };
       }
+      const afterAuditToken = await bridgeStore.renewLock(lockToken, Date.now(), TICK_LOCK_MS);
+      if (afterAuditToken === null) return { ran: false, reason: 'lease-lost' };
+      lockToken = afterAuditToken;
     }
 
     const plan = planTick(
@@ -208,7 +233,7 @@ export async function runTick(trigger: TickTrigger): Promise<TickOutcome> {
         eventsToday,
         callsToday: spend.llmCalls,
         costTodayUsd: spend.costUsd,
-        dailyCallCap: DAILY_NARRATION_CAP,
+        dailyCallCap: DAILY_BRIDGE_CALL_CAP,
       },
       nowIso,
     );
@@ -219,12 +244,15 @@ export async function runTick(trigger: TickTrigger): Promise<TickOutcome> {
     // Gate narration on the narrator's OWN spend, not the whole crew's, so
     // heavy Envoy or Curator traffic (each capped separately) can't starve it.
     let narrated = false;
-    const narratorCalls = (await daySpend(turso, nowIso, 'narrator')).llmCalls;
-    if (AI_GATEWAY_API_KEY && plan.narratable.length && narratorCalls < DAILY_NARRATION_CAP) {
+    if (
+      AI_GATEWAY_API_KEY &&
+      plan.narratable.length &&
+      (await reserveCall(turso, 'narrator', DAILY_NARRATION_CAP, nowIso))
+    ) {
       const result = await narrate(plan.narratable);
       if (result.usage) {
         narrated = true;
-        await recordSpend(
+        await finalizeSpend(
           turso,
           {
             agent: 'narrator',
@@ -247,6 +275,10 @@ export async function runTick(trigger: TickTrigger): Promise<TickOutcome> {
       }
     }
 
+    const beforeCommitToken = await bridgeStore.renewLock(lockToken, Date.now(), TICK_LOCK_MS);
+    if (beforeCommitToken === null) return { ran: false, reason: 'lease-lost' };
+    lockToken = beforeCommitToken;
+
     // Sweep missions whose runs died mid-flight (closed tab, redeploy). An
     // honest "interrupted" beats a spinner stuck on 'running' forever.
     const staleMissions = await failStaleMissions(turso, nowIso);
@@ -259,15 +291,17 @@ export async function runTick(trigger: TickTrigger): Promise<TickOutcome> {
       });
     }
 
-    // Persist the advanced world (tick counter AND scout cursor) BEFORE filing
-    // events. A crash between the two loses at most this tick's events; it can
-    // never re-file a finding the cursor already moved past, which would mint a
-    // duplicate. The owner-checked write also drops cleanly if the lease lapsed.
+    // World state and its receipts commit together. Version + live-lease checks
+    // make a stale tick fail without publishing events for a world that lost.
     const allEvents = [...preTickEvents, ...plan.events];
-    await bridgeStore.writeState(plan.world, nowIso, lockToken);
-    for (const event of allEvents) {
-      await appendEvent(turso, event, nowIso);
-    }
+    const committed = await commitBridgeTick(turso, {
+      world: plan.world,
+      expectedVersion: row.version,
+      lockToken,
+      tickedAtIso: nowIso,
+      events: allEvents,
+    });
+    if (!committed) return { ran: false, reason: 'lease-lost' };
 
     return { ran: true, tick: plan.world.tick, events: allEvents.length, narrated };
   } catch (err) {

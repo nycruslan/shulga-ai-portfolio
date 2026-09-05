@@ -58,6 +58,7 @@ export async function draftRevision(options: {
         output: Output.object({ schema: draftSchema }),
         maxOutputTokens: 400,
         maxRetries: 1,
+        timeout: { totalMs: 20_000 },
       });
       usage.inputTokens += result.usage.inputTokens ?? 0;
       usage.outputTokens += result.usage.outputTokens ?? 0;

@@ -60,6 +60,7 @@ export async function writeShipNote(
       output: Output.object({ schema: noteSchema }),
       maxOutputTokens: 200,
       maxRetries: 0, // additive color; the pushes are already on the log
+      timeout: { totalMs: 20_000 },
     });
 
     const note = repairEmDashes(output.note.trim()).slice(0, 200);

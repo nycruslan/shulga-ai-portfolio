@@ -139,7 +139,7 @@ export function buildEnvoyAgent(options: {
         }),
         execute: async function* ({ task }, { abortSignal }) {
           const missionId = await createMission(client, {
-            title: task,
+            title: 'GitHub activity scan',
             brief: task,
             assignee: 'scout',
             visitorId,
@@ -147,7 +147,7 @@ export function buildEnvoyAgent(options: {
           await appendEvent(client, {
             actor: 'envoy',
             kind: 'mission',
-            summary: `Mission #${missionId} dispatched to Scout: ${task}`,
+            summary: `Mission #${missionId} dispatched to Scout.`,
             missionId,
           });
           yield { state: 'working', missionId, note: 'Scout has the mission.' } as DispatchProgress;

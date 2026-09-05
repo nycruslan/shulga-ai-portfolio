@@ -12,7 +12,7 @@ import curated from '../../data/curated.json';
 // Honesty rules hold: LIVE vs OFF DUTY is computed from timestamps, never
 // asserted, and every number on screen arrives from the database.
 
-const POLL_MS = 4000;
+const POLL_MS = 15_000;
 
 /** Kinds that represent real crew work. Everything else is ambient. */
 const WORK_KINDS = new Set(['github', 'ship', 'audit', 'ci', 'mission', 'brief']);

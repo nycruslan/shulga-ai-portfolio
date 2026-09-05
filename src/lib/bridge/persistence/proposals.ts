@@ -7,6 +7,8 @@ import { ensureBridgeSchema } from './schema';
 
 export type ProposalStatus = 'pending' | 'shipped' | 'rejected' | 'failed';
 
+export const PROPOSAL_CLAIM_MS = 2 * 60_000;
+
 export type Proposal = {
   id: number;
   createdAt: string;
@@ -113,12 +115,48 @@ export async function keyIsBlocked(
 export async function decideProposal(
   client: Client,
   id: number,
-  decision: { status: 'shipped' | 'rejected' | 'failed'; decidedBy: string; commitUrl?: string },
+  decision: {
+    status: 'shipped' | 'rejected' | 'failed';
+    decidedBy: string;
+    claimToken: string;
+    commitUrl?: string;
+  },
   nowIso = new Date().toISOString(),
-): Promise<void> {
-  await client.execute({
-    sql: `UPDATE bridge_proposals SET status = ?, decided_by = ?, commit_url = ?, updated_at = ?
-          WHERE id = ? AND status = 'pending'`,
-    args: [decision.status, decision.decidedBy, decision.commitUrl ?? null, nowIso, id],
+): Promise<boolean> {
+  await ensureBridgeSchema(client);
+  const rs = await client.execute({
+    sql: `UPDATE bridge_proposals
+          SET status = ?, decided_by = ?, commit_url = ?, updated_at = ?,
+              claim_token = NULL, claim_until = NULL
+          WHERE id = ? AND status = 'pending' AND claim_token = ?`,
+    args: [
+      decision.status,
+      decision.decidedBy,
+      decision.commitUrl ?? null,
+      nowIso,
+      id,
+      decision.claimToken,
+    ],
   });
+  return rs.rowsAffected === 1;
+}
+
+/** Claim before any external GitHub side effect; only one live lease can win. */
+export async function claimProposal(
+  client: Client,
+  id: number,
+  claimToken: string,
+  nowIso = new Date().toISOString(),
+): Promise<boolean> {
+  await ensureBridgeSchema(client);
+  const nowMs = Date.parse(nowIso);
+  if (!Number.isFinite(nowMs)) throw new Error('Invalid proposal claim timestamp.');
+  const rs = await client.execute({
+    sql: `UPDATE bridge_proposals
+          SET claim_token = ?, claim_until = ?, updated_at = ?
+          WHERE id = ? AND status = 'pending'
+            AND (claim_token IS NULL OR claim_until IS NULL OR claim_until <= ?)`,
+    args: [claimToken, nowMs + PROPOSAL_CLAIM_MS, nowIso, id, nowMs],
+  });
+  return rs.rowsAffected === 1;
 }

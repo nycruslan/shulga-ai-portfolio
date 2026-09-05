@@ -5,18 +5,23 @@ import { systemPrompt, about } from '../../data/about';
 import { getProject, listProjects, searchPortfolio } from '../../lib/portfolio-content';
 import { readEvalRuns } from '../../lib/turso';
 import { clientIp, makeLimiter } from '../../lib/ratelimit';
+import { chatRequestSchema } from '../../lib/bridge/request-schema';
+import { json, readJson, withTimeout } from '../../lib/http';
 
 export const prerender = false;
 
-const MAX_MESSAGES = 20;
 const MAX_TOOL_ROUNDS = 3;
 
-// Per-IP rate limit. Upstash when configured, an in-process cap in production
-// otherwise, no-op only in dev — a public model endpoint is never unmetered.
+// Public model traffic fails closed in production unless the distributed
+// limiter is configured and reachable. Development remains unmetered.
 const ratelimit = makeLimiter('chat', 20, 60 * 60_000);
+const dailyLimit = makeLimiter('chat-daily', 300, 24 * 60 * 60_000);
 
-const json = (body: unknown, status: number) =>
-  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+async function reserveDailyModelCall(): Promise<boolean> {
+  if (!dailyLimit) return true;
+  const day = new Date().toISOString().slice(0, 10);
+  return (await dailyLimit.limit(day)).success;
+}
 
 // The agent's tool surface. Prescriptive descriptions (when to call, not just
 // what it does) so Haiku triggers reliably.
@@ -130,28 +135,29 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
         );
       }
     } catch (err) {
-      // A limiter outage shouldn't 500 the endpoint; log and allow through.
       console.error('[api/chat] rate limit check failed:', err);
+      return json({ error: 'Chat safety gate unavailable. Try again shortly.' }, 503);
     }
   }
 
-  let body: { messages?: { role: string; content: string }[] };
-  try {
-    body = await request.json();
-  } catch {
-    return json({ error: 'Invalid request' }, 400);
-  }
-
-  const history = (body.messages ?? []).slice(-MAX_MESSAGES).map((m) => ({
-    role: m.role === 'assistant' ? ('assistant' as const) : ('user' as const),
-    content: String(m.content).slice(0, 2000),
-  }));
-
-  if (!history.length || history[history.length - 1].role !== 'user') {
+  const parsed = await readJson(request, chatRequestSchema, 96 * 1024);
+  if (!parsed.ok) return parsed.response;
+  const history = parsed.data.messages;
+  if (history.at(-1)?.role !== 'user') {
     return json({ error: 'Invalid message list' }, 400);
   }
 
+  try {
+    if (!(await reserveDailyModelCall())) {
+      return json({ error: 'Chat reached its daily model budget.' }, 429);
+    }
+  } catch (err) {
+    console.error('[api/chat] daily safety gate failed:', err);
+    return json({ error: 'Chat safety gate unavailable. Try again shortly.' }, 503);
+  }
+
   const encoder = new TextEncoder();
+  const abortSignal = withTimeout(request.signal, 90_000);
   const readable = new ReadableStream({
     async start(controller) {
       const emit = (event: Record<string, unknown>) =>
@@ -161,15 +167,31 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
         const messages: Anthropic.MessageParam[] = [...history];
 
         for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+          if (round > 0) {
+            try {
+              if (!(await reserveDailyModelCall())) {
+                emit({ t: 'err', v: 'Chat reached its daily model budget.' });
+                return;
+              }
+            } catch (err) {
+              console.error('[api/chat] daily safety gate failed mid-run:', err);
+              emit({ t: 'err', v: 'Chat safety gate unavailable. Try again shortly.' });
+              return;
+            }
+          }
+
           // Last round: no tools, force a final grounded answer.
           const allowTools = round < MAX_TOOL_ROUNDS;
-          const stream = client.messages.stream({
-            model: CHAT_MODEL,
-            max_tokens: 700,
-            system: systemPrompt + toolAddendum,
-            messages,
-            ...(allowTools ? { tools } : {}),
-          });
+          const stream = client.messages.stream(
+            {
+              model: CHAT_MODEL,
+              max_tokens: 700,
+              system: systemPrompt + toolAddendum,
+              messages,
+              ...(allowTools ? { tools } : {}),
+            },
+            { signal: abortSignal },
+          );
 
           for await (const chunk of stream) {
             if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
@@ -212,7 +234,11 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
           /* stream already closed by the client */
         }
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          /* cancelled streams are already closed */
+        }
       }
     },
   });

@@ -1,5 +1,6 @@
 import { defineMiddleware } from 'astro:middleware';
 import { auth, isAllowed } from './lib/auth';
+import { json } from './lib/http';
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const path = context.url.pathname;
@@ -11,18 +12,19 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   if (auth) {
     const session = await auth.api.getSession({ headers: context.request.headers });
-    if (session) {
-      context.locals.user = session.user;
-    }
+    if (session) context.locals.user = session.user;
   }
 
-  if (path !== '/admin/login') {
+  // Login and Better Auth's own endpoints must stay public or sign-in loops.
+  const isAuthRoute = path === '/admin/login' || path.startsWith('/admin/api/auth');
+  if (!isAuthRoute) {
     const email = context.locals.user?.email;
-    // Fail closed: require auth wired and the session email on the allowlist.
     // isAllowed() always includes the owner, so an empty list still lets the
     // owner in and no one else.
     if (!auth || !isAllowed(email)) {
-      return context.redirect('/admin/login');
+      return path.startsWith('/admin/api/')
+        ? json({ error: 'Unauthorized.' }, 401)
+        : context.redirect('/admin/login');
     }
   }
 

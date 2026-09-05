@@ -1,13 +1,11 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN } from 'astro:env/server';
-import { MemoryLimiter, type RateLimiter } from './ratelimit-core';
+import type { RateLimiter } from './ratelimit-core';
 
-// Shared rate limiter. Backed by Upstash when configured. When it isn't, we do
-// NOT silently disable the cap in production: a missing Upstash env must never
-// turn a public, model-spending endpoint into an unmetered one. Instead we fall
-// back to an in-process sliding window (per-instance, not global, but a real
-// cap beats none). In dev we stay a no-op for local ergonomics.
+// Paid public endpoints require one distributed safety gate in production.
+// A per-instance fallback looks safe but multiplies its allowance whenever the
+// platform scales out, so missing or unavailable Redis fails closed instead.
 
 export { clientIp, MemoryLimiter, type RateLimiter } from './ratelimit-core';
 
@@ -18,12 +16,28 @@ const redis =
 
 export function makeLimiter(prefix: string, limit: number, windowMs: number): RateLimiter | null {
   if (redis) {
-    return new Ratelimit({
+    const upstash = new Ratelimit({
       redis,
       limiter: Ratelimit.slidingWindow(limit, `${windowMs} ms`),
       prefix,
+      timeout: 3_000,
     });
+    return {
+      async limit(key) {
+        const result = await upstash.limit(key);
+        if (result.reason === 'timeout') {
+          throw new Error('Distributed rate limiting timed out.');
+        }
+        return { success: result.success };
+      },
+    };
   }
-  // No Upstash: enforce an in-process cap in production, no-op in dev.
-  return import.meta.env.PROD ? new MemoryLimiter(limit, windowMs) : null;
+  if (import.meta.env.PROD) {
+    return {
+      async limit() {
+        throw new Error('Distributed rate limiting is not configured.');
+      },
+    };
+  }
+  return null;
 }

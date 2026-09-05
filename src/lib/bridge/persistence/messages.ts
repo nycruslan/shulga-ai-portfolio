@@ -1,5 +1,5 @@
 import type { Client } from '@libsql/client';
-import type { UIMessage } from 'ai';
+import { safeValidateUIMessages, type UIMessage } from 'ai';
 import { ensureBridgeSchema } from './schema';
 
 // Conversation persistence. Always UIMessages (never ModelMessages — the v6
@@ -14,32 +14,43 @@ import { ensureBridgeSchema } from './schema';
 export async function saveConversation(
   client: Client,
   conversationId: string,
+  ownerHash: string,
   visitorId: string,
   messages: UIMessage[],
   nowIso = new Date().toISOString(),
-): Promise<void> {
+): Promise<boolean> {
   await ensureBridgeSchema(client);
-  await client.execute({
-    sql: `INSERT OR REPLACE INTO bridge_messages (id, conversation_id, created_at, message)
-          VALUES (?, ?, ?, ?)`,
-    args: [conversationId, visitorId, nowIso, JSON.stringify(messages)],
+  const rs = await client.execute({
+    sql: `INSERT INTO bridge_messages (id, conversation_id, owner_hash, created_at, message)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            conversation_id = excluded.conversation_id,
+            created_at = excluded.created_at,
+            message = excluded.message
+          WHERE bridge_messages.owner_hash = excluded.owner_hash`,
+    args: [conversationId, visitorId, ownerHash, nowIso, JSON.stringify(messages)],
   });
+  return rs.rowsAffected === 1;
 }
 
+/** Returns null when the id exists but belongs to a different browser session. */
 export async function loadConversation(
   client: Client,
   conversationId: string,
-): Promise<UIMessage[]> {
+  ownerHash: string,
+): Promise<UIMessage[] | null> {
   await ensureBridgeSchema(client);
   const rs = await client.execute({
-    sql: `SELECT message FROM bridge_messages WHERE id = ?`,
+    sql: `SELECT owner_hash, message FROM bridge_messages WHERE id = ?`,
     args: [conversationId],
   });
-  const raw = rs.rows[0]?.message;
-  if (raw == null) return [];
+  const row = rs.rows[0];
+  if (!row) return [];
+  if (row.owner_hash !== ownerHash) return null;
   try {
-    const parsed = JSON.parse(String(raw));
-    return Array.isArray(parsed) ? (parsed as UIMessage[]) : [];
+    const parsed = JSON.parse(String(row.message));
+    const validated = await safeValidateUIMessages({ messages: parsed });
+    return validated.success ? validated.data : [];
   } catch {
     return [];
   }

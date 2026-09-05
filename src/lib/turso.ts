@@ -1,6 +1,6 @@
 import { createClient } from '@libsql/client';
 import {
-  createPortfolioSchema,
+  LIMITS,
   statusSchema,
   type CreatePortfolioInput,
   type PlaygroundConfig,
@@ -418,47 +418,116 @@ export async function listPlaygroundConfigs(): Promise<PlaygroundConfig[]> {
   }
 }
 
-export async function createPlaygroundConfig(
+type PlaygroundWriteResult =
+  | { ok: true; id: string }
+  | { ok: false; error: string; status: 404 | 409 | 500 };
+
+export async function savePlaygroundConfig(
   input: CreatePortfolioInput,
-): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
-  if (!client) return { ok: false, error: 'Turso not configured' };
-  const parsed = createPortfolioSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'invalid' };
+  replacesId: string | null = null,
+): Promise<PlaygroundWriteResult> {
+  if (!client) return { ok: false, error: 'Turso not configured', status: 500 };
+  let tx: Awaited<ReturnType<NonNullable<typeof client>['transaction']>> | null = null;
   try {
     await ensurePlaygroundTable();
+    tx = await client.transaction('write');
+    const rows = await tx.execute('SELECT id, name, status FROM playground_portfolios');
+    const existing = rows.rows.map((row) => ({
+      id: String(row.id),
+      name: String(row.name),
+      status: String(row.status),
+    }));
+    if (replacesId && !existing.some((item) => item.id === replacesId)) {
+      return { ok: false, error: 'the portfolio being edited no longer exists', status: 404 };
+    }
+    const others = existing.filter((item) => item.id !== replacesId);
+    if (others.filter((item) => item.status === 'active').length >= LIMITS.maxActive) {
+      return {
+        ok: false,
+        error: `max ${LIMITS.maxActive} active portfolios; archive one first`,
+        status: 409,
+      };
+    }
+    if (
+      others.some(
+        (item) =>
+          item.status !== 'archived' && item.name.toLowerCase() === input.name.toLowerCase(),
+      )
+    ) {
+      return { ok: false, error: 'an active or paused portfolio has that name', status: 409 };
+    }
+
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    await client.execute({
+    if (replacesId) {
+      const archived = await tx.execute({
+        sql: "UPDATE playground_portfolios SET status = 'archived', updated_at = ? WHERE id = ?",
+        args: [now, replacesId],
+      });
+      if (archived.rowsAffected !== 1) throw new Error('Replacement disappeared during write.');
+    }
+    await tx.execute({
       sql:
         'INSERT INTO playground_portfolios (id, name, params_json, status, capital, created_at, updated_at) ' +
         "VALUES (?, ?, ?, 'active', ?, ?, ?)",
-      args: [
-        id,
-        parsed.data.name,
-        JSON.stringify(parsed.data.params),
-        parsed.data.capital,
-        now,
-        now,
-      ],
+      args: [id, input.name, JSON.stringify(input.params), input.capital, now, now],
     });
+    await tx.commit();
     return { ok: true, id };
   } catch (err) {
-    console.error('[turso] createPlaygroundConfig failed:', err);
-    return { ok: false, error: 'write failed' };
+    console.error('[turso] savePlaygroundConfig failed:', err);
+    return { ok: false, error: 'write failed', status: 500 };
+  } finally {
+    tx?.close();
   }
 }
 
-export async function setPlaygroundStatus(id: string, status: PlaygroundStatus): Promise<boolean> {
-  if (!client || !id) return false;
+export async function setPlaygroundStatus(
+  id: string,
+  status: PlaygroundStatus,
+): Promise<{ ok: true } | { ok: false; error: string; status: 404 | 409 | 500 }> {
+  if (!client || !id) return { ok: false, error: 'not configured', status: 500 };
+  let tx: Awaited<ReturnType<NonNullable<typeof client>['transaction']>> | null = null;
   try {
     await ensurePlaygroundTable();
-    const rs = await client.execute({
+    tx = await client.transaction('write');
+    const target = await tx.execute({
+      sql: 'SELECT id, name FROM playground_portfolios WHERE id = ?',
+      args: [id],
+    });
+    if (!target.rows[0]) {
+      return { ok: false, error: 'not found', status: 404 };
+    }
+    if (status !== 'archived') {
+      const conflicts = await tx.execute({
+        sql: `SELECT
+                SUM(CASE WHEN status = 'active' AND id != ? THEN 1 ELSE 0 END) AS active_count,
+                SUM(CASE WHEN status != 'archived' AND id != ? AND lower(name) = lower(?) THEN 1 ELSE 0 END) AS name_count
+              FROM playground_portfolios`,
+        args: [id, id, String(target.rows[0].name)],
+      });
+      if (status === 'active' && Number(conflicts.rows[0]?.active_count ?? 0) >= LIMITS.maxActive) {
+        return {
+          ok: false,
+          error: `max ${LIMITS.maxActive} active portfolios; pause one first`,
+          status: 409,
+        };
+      }
+      if (Number(conflicts.rows[0]?.name_count ?? 0) > 0) {
+        return { ok: false, error: 'a current portfolio has that name', status: 409 };
+      }
+    }
+    const rs = await tx.execute({
       sql: 'UPDATE playground_portfolios SET status = ?, updated_at = ? WHERE id = ?',
       args: [status, new Date().toISOString(), id],
     });
-    return rs.rowsAffected > 0;
+    if (rs.rowsAffected !== 1) throw new Error('Status update did not affect one row.');
+    await tx.commit();
+    return { ok: true };
   } catch (err) {
     console.error('[turso] setPlaygroundStatus failed:', err);
-    return false;
+    return { ok: false, error: 'write failed', status: 500 };
+  } finally {
+    tx?.close();
   }
 }
