@@ -1,11 +1,11 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN } from 'astro:env/server';
-import type { RateLimiter } from './ratelimit-core';
+import { MemoryLimiter, type RateLimiter } from './ratelimit-core';
 
-// Paid public endpoints require one distributed safety gate in production.
-// A per-instance fallback looks safe but multiplies its allowance whenever the
-// platform scales out, so missing or unavailable Redis fails closed instead.
+// Upstash is the production-wide gate when configured. If it is absent, keep
+// a per-instance cap rather than taking every public AI route offline. Once a
+// distributed limiter exists, timeout responses fail closed.
 
 export { clientIp, MemoryLimiter, type RateLimiter } from './ratelimit-core';
 
@@ -32,12 +32,5 @@ export function makeLimiter(prefix: string, limit: number, windowMs: number): Ra
       },
     };
   }
-  if (import.meta.env.PROD) {
-    return {
-      async limit() {
-        throw new Error('Distributed rate limiting is not configured.');
-      },
-    };
-  }
-  return null;
+  return import.meta.env.PROD ? new MemoryLimiter(limit, windowMs) : null;
 }
