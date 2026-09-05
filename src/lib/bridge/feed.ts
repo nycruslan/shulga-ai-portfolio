@@ -2,7 +2,8 @@ import type { BridgeEvent } from './persistence/events';
 import type { DaySpend } from './persistence/budget';
 import type { Mission } from './persistence/missions';
 import type { WorldStateRow } from './engine/world-store';
-import { DAILY_NARRATION_CAP, type BridgeWorld } from './engine/tick';
+import type { BridgeWorld } from './engine/tick';
+import { DAILY_BRIDGE_CALL_CAP } from './persistence/budget';
 import { activeCiAlert } from './engine/scout';
 import { CREW, ROADMAP, type RoadmapMission } from './crew';
 
@@ -12,6 +13,11 @@ import { CREW, ROADMAP, type RoadmapMission } from './crew';
 export const LIVE_WINDOW_MS = 10 * 60_000;
 
 export type BridgeLiveness = 'live' | 'off-duty';
+
+export type PublicMission = Pick<
+  Mission,
+  'id' | 'createdAt' | 'updatedAt' | 'status' | 'title' | 'assignee'
+>;
 
 export type BridgeFeedPayload = {
   configured: boolean;
@@ -33,7 +39,7 @@ export type BridgeFeedPayload = {
   }>;
   roadmap: RoadmapMission[];
   /** Real visitor-dispatched missions, newest first. */
-  missions: Mission[];
+  missions: PublicMission[];
   /** False until the gateway key is installed; the comms panel says so. */
   commsOnline: boolean;
   spend: { calls: number; costUsd: number; cap: number };
@@ -56,6 +62,11 @@ export function livenessAt(lastActivityAt: string, nowMs: number): BridgeLivenes
   return nowMs - Date.parse(lastActivityAt) <= LIVE_WINDOW_MS ? 'live' : 'off-duty';
 }
 
+function publicMissionTitle(mission: Mission): string {
+  if (!mission.visitorId) return mission.title;
+  return mission.assignee === 'curator' ? 'Recruiter briefing' : 'GitHub activity scan';
+}
+
 function buildAlert(world: BridgeWorld | undefined): BridgeFeedPayload['alert'] {
   // Optional chaining: worlds persisted before the CI sensor have no ci map.
   const alert = world?.scout ? activeCiAlert(world.scout) : null;
@@ -75,11 +86,24 @@ export function buildBridgeFeed(input: {
   spend: DaySpend;
   nowIso: string;
   missions?: Mission[];
+  latestEventAt?: string | null;
   commsOnline?: boolean;
 }): BridgeFeedPayload {
-  const { row, events, spend, nowIso, missions = [], commsOnline = false } = input;
+  const {
+    row,
+    events,
+    spend,
+    nowIso,
+    missions = [],
+    latestEventAt: knownLatestEventAt,
+    commsOnline = false,
+  } = input;
   const world = row?.world;
-  const latestEventAt = events.at(-1)?.createdAt;
+  const pageLatestEventAt = events.at(-1)?.createdAt;
+  let latestEventAt = knownLatestEventAt ?? pageLatestEventAt;
+  if (pageLatestEventAt && (!latestEventAt || pageLatestEventAt > latestEventAt)) {
+    latestEventAt = pageLatestEventAt;
+  }
   const lastTickAt = world?.lastTickAt ?? nowIso;
   const lastActivityAt = latestEventAt && latestEventAt > lastTickAt ? latestEventAt : lastTickAt;
 
@@ -102,13 +126,28 @@ export function buildBridgeFeed(input: {
       status: world?.crew[m.id]?.status ?? 'Standing by.',
     })),
     roadmap: ROADMAP,
-    missions,
+    missions: missions.map((mission) => ({
+      id: mission.id,
+      createdAt: mission.createdAt,
+      updatedAt: mission.updatedAt,
+      status: mission.status,
+      title: publicMissionTitle(mission),
+      assignee: mission.assignee,
+    })),
     commsOnline,
-    spend: { calls: spend.llmCalls, costUsd: spend.costUsd, cap: DAILY_NARRATION_CAP },
+    spend: { calls: spend.llmCalls, costUsd: spend.costUsd, cap: DAILY_BRIDGE_CALL_CAP },
     // Optional chaining: worlds persisted before Phase 2 have no scout state.
     shipped: world?.scout?.lastCommit ?? null,
     alert: buildAlert(world),
-    events,
+    events: events.map((event) => {
+      if (event.kind !== 'mission') return event;
+      const label = event.missionId ? `Mission #${event.missionId}` : 'Mission';
+      return {
+        ...event,
+        summary: `${label} activity recorded by ${event.actor}.`,
+        detail: undefined,
+      };
+    }),
     cursor: events.at(-1)?.id ?? 0,
   };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, getToolName, isToolUIPart, type UIMessage } from 'ai';
 import type { DispatchProgress } from '../../lib/bridge/agents/envoy';
@@ -30,35 +30,47 @@ const TOOL_LINES: Record<string, { active: string; done: (output: unknown) => st
   },
 };
 
-function uid(prefix: string) {
-  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+const STORAGE_KEY = 'bridge-conversation-id';
+const ID_RE = /^con-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function newConversationId(): string {
+  return `con-${crypto.randomUUID()}`;
 }
 
-function usePersistentId(key: string, prefix: string): string {
-  return useMemo(() => {
+function storedConversationId(): string {
+  try {
+    const existing = localStorage.getItem(STORAGE_KEY);
+    if (existing && ID_RE.test(existing)) return existing;
+    const fresh = newConversationId();
+    localStorage.setItem(STORAGE_KEY, fresh);
+    return fresh;
+  } catch {
+    return newConversationId();
+  }
+}
+
+function useConversationId() {
+  const [id, setId] = useState(storedConversationId);
+  const reset = useCallback(() => {
+    const fresh = newConversationId();
     try {
-      const existing = localStorage.getItem(key);
-      if (existing) return existing;
-      const fresh = uid(prefix);
-      localStorage.setItem(key, fresh);
-      return fresh;
+      localStorage.setItem(STORAGE_KEY, fresh);
     } catch {
-      return uid(prefix);
+      /* storage unavailable; the in-memory id still rotates */
     }
-  }, [key, prefix]);
+    setId(fresh);
+  }, []);
+  return [id, reset] as const;
 }
 
 function MissionCard({ progress, state }: { progress?: DispatchProgress; state: string }) {
+  const failed = progress?.state === 'failed' || state === 'output-error';
   const label =
-    progress?.state === 'done'
-      ? 'MISSION COMPLETE'
-      : progress?.state === 'failed'
-        ? 'MISSION FAILED'
-        : 'MISSION RUNNING';
+    progress?.state === 'done' ? 'MISSION COMPLETE' : failed ? 'MISSION FAILED' : 'MISSION RUNNING';
   const color =
     progress?.state === 'done'
       ? 'var(--color-accent)'
-      : progress?.state === 'failed'
+      : failed
         ? 'var(--color-warning)'
         : 'var(--color-text-muted)';
   return (
@@ -78,7 +90,8 @@ function MissionCard({ progress, state }: { progress?: DispatchProgress; state: 
         {progress?.state === 'done' && progress.report}
         {progress?.state === 'failed' && progress.report}
         {!progress && state === 'input-streaming' && 'Envoy is writing the mission brief…'}
-        {!progress && state !== 'input-streaming' && 'Dispatching…'}
+        {!progress && state === 'output-error' && 'Mission failed before Scout returned.'}
+        {!progress && state !== 'input-streaming' && state !== 'output-error' && 'Dispatching…'}
       </p>
       {progress?.state === 'working' && (
         <p className="mt-1 font-mono text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>
@@ -90,26 +103,38 @@ function MissionCard({ progress, state }: { progress?: DispatchProgress; state: 
 }
 
 export default function EnvoyComms({ online }: Props) {
-  const visitorId = usePersistentId('bridge-visitor-id', 'vis');
-  const conversationId = usePersistentId('bridge-conversation-id', 'con');
-  const [initialMessages, setInitialMessages] = useState<UIMessage[] | null>(null);
+  const [conversationId, resetConversationId] = useConversationId();
+  const [loaded, setLoaded] = useState<{ id: string; messages: UIMessage[] } | null>(null);
   const [input, setInput] = useState('');
-  const endRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLLIElement>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/bridge/conversation.json?id=${encodeURIComponent(conversationId)}`)
-      .then((r) => (r.ok ? r.json() : { messages: [] }))
-      .then((d) => {
-        if (!cancelled) setInitialMessages(d.messages ?? []);
+    const controller = new AbortController();
+    void fetch(`/api/bridge/conversation.json?id=${encodeURIComponent(conversationId)}`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (response.status === 409) {
+          resetConversationId();
+          return null;
+        }
+        return response.ok ? response.json() : { messages: [] };
+      })
+      .then((data) => {
+        if (data && !controller.signal.aborted) {
+          setLoaded({
+            id: conversationId,
+            messages: Array.isArray(data.messages) ? data.messages : [],
+          });
+        }
       })
       .catch(() => {
-        if (!cancelled) setInitialMessages([]);
+        if (!controller.signal.aborted) setLoaded({ id: conversationId, messages: [] });
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [conversationId]);
+    return () => controller.abort();
+  }, [conversationId, resetConversationId]);
+
+  const initialMessages = loaded?.id === conversationId ? loaded.messages : null;
 
   if (!online) {
     return (
@@ -128,37 +153,43 @@ export default function EnvoyComms({ online }: Props) {
   }
   return (
     <CommsSession
-      visitorId={visitorId}
+      key={conversationId}
       conversationId={conversationId}
       initialMessages={initialMessages}
       input={input}
       setInput={setInput}
       endRef={endRef}
+      onOwnershipExpired={resetConversationId}
     />
   );
 }
 
 function CommsSession({
-  visitorId,
   conversationId,
   initialMessages,
   input,
   setInput,
   endRef,
+  onOwnershipExpired,
 }: {
-  visitorId: string;
   conversationId: string;
   initialMessages: UIMessage[];
   input: string;
   setInput: (v: string) => void;
-  endRef: React.RefObject<HTMLDivElement | null>;
+  endRef: React.RefObject<HTMLLIElement | null>;
+  onOwnershipExpired: () => void;
 }) {
-  const { messages, sendMessage, status, error } = useChat({
+  const { messages, sendMessage, status, error, stop } = useChat({
     messages: initialMessages,
     transport: new DefaultChatTransport({
       api: '/api/bridge/envoy',
-      body: { conversationId, visitorId },
+      body: { conversationId },
     }),
+    onError: (requestError) => {
+      if (/ownership expired|already processed/i.test(requestError.message)) {
+        onOwnershipExpired();
+      }
+    },
   });
 
   useEffect(() => {
@@ -252,12 +283,12 @@ function CommsSession({
         ))}
         {error && (
           <li className="font-mono text-xs" style={{ color: 'var(--color-warning)' }}>
-            {error.message.includes('429')
-              ? 'Rate limited. The channel reopens within the hour.'
+            {/rate limit|budget cap/i.test(error.message)
+              ? 'Rate limited. The channel reopens later.'
               : 'The channel dropped. Send that again.'}
           </li>
         )}
-        <div ref={endRef} />
+        <li ref={endRef} aria-hidden="true" />
       </ol>
 
       {messages.length === 0 && (
@@ -295,11 +326,12 @@ function CommsSession({
           }}
         />
         <button
-          type="submit"
-          disabled={busy || !input.trim()}
+          type={busy ? 'button' : 'submit'}
+          onClick={busy ? () => void stop() : undefined}
+          disabled={!busy && !input.trim()}
           className="bridge-btn rounded-md px-4 py-2 font-mono text-xs"
         >
-          send
+          {busy ? 'stop' : 'send'}
         </button>
       </form>
     </div>

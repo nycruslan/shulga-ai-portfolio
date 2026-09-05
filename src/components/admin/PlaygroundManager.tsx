@@ -529,7 +529,7 @@ export default function PlaygroundManager({
     });
   }
 
-  async function create(e: React.FormEvent<HTMLFormElement>) {
+  async function create(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
     setNote(null);

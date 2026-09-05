@@ -32,7 +32,8 @@ export type WorldStore<TWorld, TInteraction> = {
   // owns, so a slow tick whose lease already expired can't wipe a successor's
   // lock or overwrite its world. Omit it (Substrate/Garden, tests) to clear
   // unconditionally as before.
-  writeState: (world: TWorld, tickedAtIso: string, lockToken?: number) => Promise<void>;
+  writeState: (world: TWorld, tickedAtIso: string, lockToken?: number) => Promise<boolean>;
+  renewLock: (lockToken: number, nowMs: number, ttlMs: number) => Promise<number | null>;
   releaseLock: (lockToken?: number) => Promise<void>;
   enqueueInteraction: (it: TInteraction & { kind: string }) => Promise<boolean>;
   drainQueue: (limit?: number) => Promise<TInteraction[]>;
@@ -82,7 +83,10 @@ export function createWorldStore<TWorld, TInteraction>(
         'write',
       );
       await seedState();
-    })();
+    })().catch((error) => {
+      schemaReady = null;
+      throw error;
+    });
     return schemaReady;
   }
 
@@ -125,26 +129,47 @@ export function createWorldStore<TWorld, TInteraction>(
     if (!client) return false;
     await ensureSchema();
     const rs = await client.execute({
-      sql: `UPDATE ${stateTable} SET lock_until = ? WHERE id = 1 AND lock_until < ?`,
+      sql: `UPDATE ${stateTable} SET lock_until = ? WHERE id = 1 AND lock_until <= ?`,
       args: [nowMs + ttlMs, nowMs],
     });
     return rs.rowsAffected === 1;
   }
 
-  async function writeState(world: TWorld, tickedAtIso: string, lockToken?: number): Promise<void> {
-    if (!client) return;
+  async function writeState(
+    world: TWorld,
+    tickedAtIso: string,
+    lockToken?: number,
+  ): Promise<boolean> {
+    if (!client) return false;
     await ensureSchema();
-    const ownerClause = lockToken === undefined ? '' : ' AND lock_until = ?';
+    const ownerClause = lockToken === undefined ? '' : ' AND lock_until = ? AND lock_until >= ?';
+    const nowMs = Date.now();
     const args: (string | number)[] = [
       JSON.stringify(world),
       tickedAtIso,
       new Date().toISOString(),
     ];
-    if (lockToken !== undefined) args.push(lockToken);
-    await client.execute({
+    if (lockToken !== undefined) args.push(lockToken, nowMs);
+    const rs = await client.execute({
       sql: `UPDATE ${stateTable} SET version = version + 1, world = ?, ticked_at = ?, lock_until = 0, updated_at = ? WHERE id = 1${ownerClause}`,
       args,
     });
+    return rs.rowsAffected === 1;
+  }
+
+  async function renewLock(
+    lockToken: number,
+    nowMs: number,
+    ttlMs: number,
+  ): Promise<number | null> {
+    if (!client) return null;
+    await ensureSchema();
+    const nextToken = nowMs + ttlMs;
+    const rs = await client.execute({
+      sql: `UPDATE ${stateTable} SET lock_until = ? WHERE id = 1 AND lock_until = ? AND lock_until >= ?`,
+      args: [nextToken, lockToken, nowMs],
+    });
+    return rs.rowsAffected === 1 ? nextToken : null;
   }
 
   async function releaseLock(lockToken?: number): Promise<void> {
@@ -223,6 +248,7 @@ export function createWorldStore<TWorld, TInteraction>(
     readState,
     acquireLock,
     writeState,
+    renewLock,
     releaseLock,
     enqueueInteraction,
     drainQueue,

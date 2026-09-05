@@ -62,17 +62,22 @@ describe('conversation persistence', () => {
     const m1 = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }];
     const m2 = [...m1, { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'hello' }] }];
     // @ts-expect-error minimal UIMessage shapes are fine for storage
-    await saveConversation(client, 'con-1', 'vis-1', m1, NOW);
+    await saveConversation(client, 'con-1', 'owner-1', 'vis-1', m1, NOW);
     // @ts-expect-error minimal UIMessage shapes are fine for storage
-    await saveConversation(client, 'con-1', 'vis-1', m2, NOW);
-    const loaded = await loadConversation(client, 'con-1');
+    await saveConversation(client, 'con-1', 'owner-1', 'vis-1', m2, NOW);
+    expect(
+      // @ts-expect-error minimal UIMessage shapes are fine for storage
+      await saveConversation(client, 'con-1', 'owner-2', 'vis-2', m1, NOW),
+    ).toBe(false);
+    const loaded = await loadConversation(client, 'con-1', 'owner-1');
     expect(loaded).toHaveLength(2);
-    expect(loaded[1].id).toBe('a1');
+    expect(loaded?.[1].id).toBe('a1');
+    expect(await loadConversation(client, 'con-1', 'owner-2')).toBeNull();
   });
 
   it('returns [] for unknown conversations and corrupt rows', async () => {
     const client = db();
-    expect(await loadConversation(client, 'nope')).toEqual([]);
+    expect(await loadConversation(client, 'nope', 'owner-1')).toEqual([]);
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createClient } from '@libsql/client';
-import { appendEvent, countEventsSince, listEvents } from './events';
-import { daySpend, isOverBudget, recordSpend } from './budget';
+import { appendEvent, countEventsSince, latestEventTimestamp, listEvents } from './events';
+import { daySpend, finalizeSpend, isOverBudget, recordSpend, reserveCall } from './budget';
 
 const db = () => createClient({ url: ':memory:' });
 
@@ -86,6 +86,7 @@ describe('events', () => {
     }
     expect(await countEventsSince(client, '2026-06-27T00:00:00.000Z')).toBe(4);
     expect(await countEventsSince(client, '2026-06-26T00:00:00.000Z')).toBe(7);
+    expect(await latestEventTimestamp(client)).toBe('2026-06-27T08:00:00.000Z');
   });
 });
 
@@ -129,5 +130,39 @@ describe('budget', () => {
     await recordSpend(client, { agent: 'scout' }, day);
     expect(await isOverBudget(client, 2, day)).toBe(true);
     expect(await isOverBudget(client, 2, day, 'critic')).toBe(false);
+  });
+
+  it('reserves calls atomically at both agent and total caps', async () => {
+    const client = db();
+    const day = '2026-06-12T10:00:00.000Z';
+    const reservations = await Promise.all(
+      Array.from({ length: 8 }, () => reserveCall(client, 'envoy', 3, day, 5)),
+    );
+    expect(reservations.filter(Boolean)).toHaveLength(3);
+    expect(await reserveCall(client, 'curator', 3, day, 5)).toBe(true);
+    expect(await reserveCall(client, 'narrator', 3, day, 5)).toBe(true);
+    expect(await reserveCall(client, 'briefing', 3, day, 5)).toBe(false);
+    expect((await daySpend(client, day)).llmCalls).toBe(5);
+  });
+
+  it('adds usage only to an existing reservation', async () => {
+    const client = db();
+    const day = '2026-06-12T10:00:00.000Z';
+    await expect(finalizeSpend(client, { agent: 'envoy', inputTokens: 10 }, day)).rejects.toThrow(
+      /No reserved model call/,
+    );
+
+    expect(await reserveCall(client, 'envoy', 1, day)).toBe(true);
+    await finalizeSpend(
+      client,
+      { agent: 'envoy', inputTokens: 10, outputTokens: 5, costUsd: 0.02 },
+      day,
+    );
+    expect(await daySpend(client, day, 'envoy')).toEqual({
+      llmCalls: 1,
+      inputTokens: 10,
+      outputTokens: 5,
+      costUsd: 0.02,
+    });
   });
 });

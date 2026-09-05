@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { MemoryLimiter, clientIp } from './ratelimit-core';
 
-describe('MemoryLimiter (the in-process fallback cap)', () => {
+describe('MemoryLimiter', () => {
   afterEach(() => vi.useRealTimers());
 
   it('allows up to the limit, then blocks, per key', async () => {
@@ -22,6 +22,15 @@ describe('MemoryLimiter (the in-process fallback cap)', () => {
     expect((await rl.limit('a')).success).toBe(true);
     expect((await rl.limit('a')).success).toBe(false);
     vi.setSystemTime(1001); // both prior hits now older than the 1s window
+    expect((await rl.limit('a')).success).toBe(true);
+  });
+
+  it('bounds the number of keys with least-recently-used eviction', async () => {
+    const rl = new MemoryLimiter(1, 60_000, 2);
+    expect((await rl.limit('a')).success).toBe(true);
+    expect((await rl.limit('a')).success).toBe(false);
+    expect((await rl.limit('b')).success).toBe(true);
+    expect((await rl.limit('c')).success).toBe(true);
     expect((await rl.limit('a')).success).toBe(true);
   });
 });

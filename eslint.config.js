@@ -1,12 +1,13 @@
 // @ts-check
 import js from '@eslint/js';
+import { defineConfig } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 import astro from 'eslint-plugin-astro';
 import reactHooks from 'eslint-plugin-react-hooks';
 import prettier from 'eslint-config-prettier';
 import globals from 'globals';
 
-export default tseslint.config(
+export default defineConfig(
   {
     ignores: ['dist/**', '.astro/**', '.vercel/**', 'node_modules/**', 'public/**'],
   },
@@ -25,8 +26,7 @@ export default tseslint.config(
   },
   {
     files: ['**/*.tsx'],
-    plugins: { 'react-hooks': reactHooks },
-    rules: reactHooks.configs['recommended-latest'].rules,
+    extends: [reactHooks.configs.flat['recommended-latest']],
   },
   {
     // Node scripts run outside Astro/TS tooling.
@@ -39,6 +39,11 @@ export default tseslint.config(
     // this exemption.
     files: ['src/components/islands/CommandPalette.tsx'],
     rules: { 'react-hooks/set-state-in-effect': 'off' },
+  },
+  {
+    // React Compiler intentionally skips TanStack Table's function-returning hook.
+    files: ['src/components/admin/{AdminTables,TraderTables}.tsx'],
+    rules: { 'react-hooks/incompatible-library': 'off' },
   },
   prettier,
 );

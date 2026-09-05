@@ -130,4 +130,63 @@ describe('feed assembly', () => {
     expect(payload.crew).toHaveLength(5);
     expect(payload.cursor).toBe(0);
   });
+
+  it('uses the freshest event timestamp when polling queries overlap', () => {
+    const eventAt = later(T0, 2_000);
+    const payload = buildBridgeFeed({
+      row: { version: 0, world: buildInitialBridgeWorld(T0), tickedAt: T0 },
+      events: [
+        {
+          id: 1,
+          createdAt: eventAt,
+          actor: 'engine',
+          kind: 'tick',
+          summary: 'Tick complete.',
+        },
+      ],
+      latestEventAt: later(T0, 1_000),
+      spend: { llmCalls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 },
+      nowIso: later(T0, 3_000),
+    });
+    expect(payload.watch.lastActivityAt).toBe(eventAt);
+  });
+
+  it('hides visitor mission text without relabeling internal audit work', () => {
+    const base = {
+      createdAt: T0,
+      updatedAt: T0,
+      status: 'running' as const,
+      outcome: 'private outcome',
+    };
+    const payload = buildBridgeFeed({
+      row: null,
+      events: [],
+      missions: [
+        {
+          ...base,
+          id: 1,
+          title: 'Private role text',
+          brief: 'private',
+          assignee: 'curator',
+          visitorId: 'visitor',
+        },
+        {
+          ...base,
+          id: 2,
+          title: 'Fix copy: intro',
+          brief: 'internal',
+          assignee: 'curator',
+        },
+      ],
+      spend: { llmCalls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 },
+      nowIso: T0,
+    });
+    expect(payload.missions.map((mission) => mission.title)).toEqual([
+      'Recruiter briefing',
+      'Fix copy: intro',
+    ]);
+    expect(payload.missions[0]).not.toHaveProperty('brief');
+    expect(payload.missions[0]).not.toHaveProperty('visitorId');
+    expect(payload.missions[0]).not.toHaveProperty('outcome');
+  });
 });

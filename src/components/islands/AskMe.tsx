@@ -159,7 +159,7 @@ export default function AskMe() {
           headers: { 'Content-Type': 'application/json' },
           // Send plain text history; trace parts are render-only.
           body: JSON.stringify({
-            messages: history.map(({ role, content }) => ({ role, content })),
+            messages: history.slice(-20).map(({ role, content }) => ({ role, content })),
           }),
           signal: ctrl.signal,
         });
@@ -485,6 +485,7 @@ export default function AskMe() {
                 }
               }}
               placeholder="Ask anything about my work…"
+              maxLength={2000}
               rows={1}
               style={{
                 flex: 1,

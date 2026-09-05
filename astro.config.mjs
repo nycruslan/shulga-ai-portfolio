@@ -10,6 +10,7 @@ export default defineConfig({
   site: 'https://ruslanshulga.com',
   adapter: vercel(),
   integrations: [react(), mdx(), sitemap()],
+  security: { checkOrigin: true },
   env: {
     schema: {
       CHAT_API_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
@@ -22,7 +23,7 @@ export default defineConfig({
       // makes commit messages arrive without per-commit lookups. A fine-grained
       // token with public read access is plenty.
       GITHUB_TOKEN: envField.string({ context: 'server', access: 'secret', optional: true }),
-      // Shared secret the GitHub Actions heartbeat sends to /api/foundry/build so
+      // Shared secret the GitHub Actions heartbeat sends to /api/bridge/tick so
       // the crew keeps building with zero visitors. Optional: visitor traffic also
       // triggers builds, bounded by the same cadence + daily cap regardless.
       TICK_SECRET: envField.string({ context: 'server', access: 'secret', optional: true }),

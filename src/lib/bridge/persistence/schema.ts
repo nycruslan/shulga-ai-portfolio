@@ -33,11 +33,12 @@ export const BRIDGE_SCHEMA = [
      outcome TEXT
    )`,
 
-  // UIMessage JSON, one row per message, grouped by conversation. Always
-  // UIMessages, never ModelMessages (see persistence notes in messages.ts).
+  // UIMessage JSON, one row per conversation. Always UIMessages, never
+  // ModelMessages (see persistence notes in messages.ts).
   `CREATE TABLE IF NOT EXISTS bridge_messages (
      id TEXT PRIMARY KEY,
      conversation_id TEXT NOT NULL,
+     owner_hash TEXT NOT NULL,
      created_at TEXT NOT NULL,
      message TEXT NOT NULL
    )`,
@@ -79,7 +80,9 @@ export const BRIDGE_SCHEMA = [
      attempts INTEGER NOT NULL DEFAULT 1,
      mission_id INTEGER,
      commit_url TEXT,
-     decided_by TEXT
+     decided_by TEXT,
+     claim_token TEXT,
+     claim_until INTEGER
    )`,
 ];
 
@@ -88,7 +91,25 @@ const ready: WeakMap<Client, Promise<void>> = new WeakMap();
 export function ensureBridgeSchema(client: Client): Promise<void> {
   let p = ready.get(client);
   if (!p) {
-    p = client.batch(BRIDGE_SCHEMA, 'write').then(() => undefined);
+    p = (async () => {
+      await client.batch(BRIDGE_SCHEMA, 'write');
+      const columns = await client.execute('PRAGMA table_info(bridge_messages)');
+      if (!columns.rows.some((row) => String(row.name) === 'owner_hash')) {
+        // Existing conversations intentionally remain unreadable: there is no
+        // trustworthy way to infer their browser owner during this migration.
+        await client.execute('ALTER TABLE bridge_messages ADD COLUMN owner_hash TEXT');
+      }
+      const proposalColumns = await client.execute('PRAGMA table_info(bridge_proposals)');
+      if (!proposalColumns.rows.some((row) => String(row.name) === 'claim_token')) {
+        await client.execute('ALTER TABLE bridge_proposals ADD COLUMN claim_token TEXT');
+      }
+      if (!proposalColumns.rows.some((row) => String(row.name) === 'claim_until')) {
+        await client.execute('ALTER TABLE bridge_proposals ADD COLUMN claim_until INTEGER');
+      }
+    })().catch((error) => {
+      ready.delete(client);
+      throw error;
+    });
     ready.set(client, p);
   }
   return p;

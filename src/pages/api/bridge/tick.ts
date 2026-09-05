@@ -1,6 +1,8 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { APIRoute } from 'astro';
 import { TICK_SECRET } from 'astro:env/server';
 import { runTick } from '../../../lib/bridge/run-tick';
+import { json } from '../../../lib/http';
 import { clientIp, makeLimiter } from '../../../lib/ratelimit';
 
 export const prerender = false;
@@ -11,19 +13,28 @@ export const prerender = false;
 // the crew. Untrusted callers are rate-limited AND cadence-gated, and the
 // daily narration cap bounds spend no matter what.
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-  });
-
 const limiter = makeLimiter('bridge-tick', 6, 10 * 60_000);
 
+function secretMatches(provided: string | null, expected: string | undefined): boolean {
+  if (!provided || !expected) return false;
+  const actualBytes = new TextEncoder().encode(provided);
+  const expectedBytes = new TextEncoder().encode(expected);
+  return (
+    actualBytes.byteLength === expectedBytes.byteLength &&
+    timingSafeEqual(actualBytes, expectedBytes)
+  );
+}
+
 export const POST: APIRoute = async ({ request, clientAddress }) => {
-  const trusted = !!TICK_SECRET && request.headers.get('x-tick-secret') === TICK_SECRET;
+  const trusted = secretMatches(request.headers.get('x-tick-secret'), TICK_SECRET);
   if (!trusted && limiter) {
-    const { success } = await limiter.limit(clientIp(clientAddress));
-    if (!success) return json({ ok: false, reason: 'rate' }, 429);
+    try {
+      const { success } = await limiter.limit(clientIp(clientAddress));
+      if (!success) return json({ ok: false, reason: 'rate' }, 429);
+    } catch (err) {
+      console.error('[bridge] tick rate limiter unavailable:', err);
+      return json({ ok: false, reason: 'safety-gate' }, 503);
+    }
   }
 
   const outcome = await runTick(trusted ? 'heartbeat' : 'visitor');

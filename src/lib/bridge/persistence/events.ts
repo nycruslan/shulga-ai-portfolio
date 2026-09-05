@@ -26,15 +26,10 @@ export type BridgeEvent = BridgeEventInput & {
   createdAt: string;
 };
 
-export async function appendEvent(
-  client: Client,
-  event: BridgeEventInput,
-  nowIso = new Date().toISOString(),
-): Promise<number> {
-  await ensureBridgeSchema(client);
-  const rs = await client.execute({
+export function eventInsert(event: BridgeEventInput, nowIso: string) {
+  return {
     sql: `INSERT INTO bridge_events (created_at, actor, kind, summary, detail, link, mission_id, generation_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       nowIso,
       event.actor,
@@ -45,7 +40,17 @@ export async function appendEvent(
       event.missionId ?? null,
       event.generationId ?? null,
     ],
-  });
+  };
+}
+
+export async function appendEvent(
+  client: Client,
+  event: BridgeEventInput,
+  nowIso = new Date().toISOString(),
+): Promise<number> {
+  await ensureBridgeSchema(client);
+  const statement = eventInsert(event, nowIso);
+  const rs = await client.execute({ ...statement, sql: `${statement.sql} RETURNING id` });
   return Number(rs.rows[0]?.id);
 }
 
@@ -89,6 +94,12 @@ export async function listEvents(
     missionId: row.mission_id == null ? undefined : Number(row.mission_id),
     generationId: row.generation_id == null ? undefined : String(row.generation_id),
   }));
+}
+
+export async function latestEventTimestamp(client: Client): Promise<string | null> {
+  await ensureBridgeSchema(client);
+  const rs = await client.execute('SELECT created_at FROM bridge_events ORDER BY id DESC LIMIT 1');
+  return rs.rows[0]?.created_at == null ? null : String(rs.rows[0].created_at);
 }
 
 /** Exact count of events filed at or after an ISO timestamp (e.g. today). */

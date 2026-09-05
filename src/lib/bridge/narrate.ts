@@ -59,6 +59,7 @@ export async function narrate(
       output: Output.object({ schema: lineSchema }),
       maxOutputTokens: 300,
       maxRetries: 0, // ambient tick; the next tick is the retry
+      timeout: { totalMs: 20_000 },
     });
 
     const lines: Partial<Record<CrewId, string>> = {};
